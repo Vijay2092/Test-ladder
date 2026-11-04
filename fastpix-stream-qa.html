@@ -453,6 +453,10 @@ function run(inp){
       add(ne.length||a.length!==b.length?"FAIL":"PASS","H.265 BANDWIDTH equals its H.264 twin (T05/T06)",ne.length?`Differs at ${ne.join(", ")}`:"Equal at every size","High",OWNER.manifest,"Advertise the same BANDWIDTH for each H.265 rung as its H.264 twin.");}
   }
 
+  {const P={"42":"Baseline","4d":"Main","58":"Extended","64":"High","6e":"High 10 (10-bit)","7a":"High 4:2:2","f4":"High 4:4:4"};
+   const bad=V.filter(v=>v.family==="H.264"&&!["42","4d","64"].includes(v.vc.slice(5,7).toLowerCase()));
+   if(V.some(v=>v.family==="H.264"))add(bad.length?"FAIL":"PASS","H.264 profile is 8-bit (Baseline, Main or High)",bad.length?`${bad.length} H.264 rendition(s) use ${[...new Set(bad.map(v=>P[v.vc.slice(5,7).toLowerCase()]||v.vc))].join(", ")} (CODECS ${[...new Set(bad.map(v=>v.vc))].slice(0,3).join(", ")}…). Safari, iPhone, iPad, Android and Firefox cannot play 10-bit H.264; only Chrome and Edge can.`:"All H.264 renditions use an 8-bit profile",
+     "Critical",OWNER.manifest,"Encode the H.264 set as 8-bit High profile (avc1.64…), converting 10-bit sources to 8-bit (yuv420p) for H.264.");}
   for(const v of V){const adv=advLevel(v.vc), req=reqLevel(v.family,v.w,v.h,v.fps);
     const st=v.family==="H.265"?(adv===req?"PASS":"FAIL"):(adv!=null&&req!=null&&adv>=req?"PASS":"WARN");
     const known=st==="WARN"&&KNOWN_AVC.has(v.res);
@@ -508,8 +512,9 @@ function categoryOf(u){u=u||"";
 function playsFamily(d){ if(d.h265&&d.h265.all)return "H.265"; if(d.h264&&d.h264.all)return "H.264"; return "none"; }
 
 /* ---------- issues ---------- */
-const noH264=d=>d.h264&&!d.h264.some;
-const envPlayFail=p=>{const R=p.results||[];return R.length>0&&R.every(r=>!r.started&&(r.errors||[]).some(e=>/manifestIncompatibleCodecsError/.test(e)));};
+const h264is10bit=()=>CUR&&CUR.res.ctx.V.some(v=>v.family==="H.264"&&!["42","4d","64"].includes(v.vc.slice(5,7).toLowerCase()));
+const noH264=d=>d.h264&&!d.h264.some&&!h264is10bit();
+const envPlayFail=p=>{const R=p.results||[];if(h264is10bit())return false;return R.length>0&&R.every(r=>!r.started&&(r.errors||[]).some(e=>/manifestIncompatibleCodecsError/.test(e)));};
 function setupProblems(){
   const out=[];
   for(const d of DEVICES) if(noH264(d)) out.push({label:d.label,setup:{message:"This test browser has no H.264 decoder at all (common for Firefox on Linux test machines without FFmpeg). Not a FastPix issue; its device and playback results are left out of the issues."}});
@@ -543,6 +548,17 @@ function collectIssues(res,devices,plays){
     const avgOf=l=>{const v=V.find(v=>v.family===l.family&&v.res===l.res&&Math.abs(v.bw-l.bwKbps)<3);return v?(v.avg??v.bw):l.bwKbps;};
     const hi=ok.filter(r=>r.kbps&&r.endedOn&&avgOf(r.endedOn)>r.kbps&&(r.levels||[]).some(l=>l.family===r.endedOn.family&&avgOf(l)<=r.kbps));
     if(hi.length)out.push({sev:"Medium",title:`${p.label}: settled on a rendition whose average rate is above the connection speed`,evidence:hi.map(r=>`${r.profile}: ended on ${r.endedOn.res}, AVERAGE-BANDWIDTH ${(avgOf(r.endedOn)/1000).toFixed(2)} Mbps on a ${r.kbps/1000} Mbps link`).join("; ")+".",fix:"Check the ABR settings and that AVERAGE-BANDWIDTH matches the real segment rate.",owner:OWNER.player});
+  }
+  // One root cause, one issue: if H.264 is 10-bit, fold every "cannot decode H.264" / "playback failed" device issue into it.
+  if(h264is10bit()){
+    const root=out.find(i=>i.title.startsWith("H.264 profile is 8-bit"));
+    const hit=out.filter(i=>i!==root&&(/cannot decode H\.264/.test(i.title)||/playback failed on/.test(i.title)));
+    if(root&&hit.length){
+      const who=[...new Set(hit.map(i=>i.title.split(":")[0]))];
+      root.title="H.264 renditions are 10-bit (High 10), so most browsers and phones cannot play them";
+      root.evidence+=` Confirmed on: ${who.join(", ")}.`;
+      for(const i of hit)out.splice(out.indexOf(i),1);
+    }
   }
   const rank={Critical:0,High:1,Medium:2}; return out.sort((a,b)=>rank[a.sev]-rank[b.sev]);
 }
@@ -939,7 +955,7 @@ $("importFile").addEventListener("change",async e=>{
   e.target.value=""; renderAll(); save();
   setMsg("impMsg",`Added ${nd} device test${nd===1?"":"s"} and ${np} playback run${np===1?"":"s"}.`+(bad?` ${bad} file(s) were not Stream QA exports.`:"")+warn,!(bad||warn));
 });
-const resetAll=()=>{DEVICES=[];PLAYS=[];if(SERVER)API("/api/reset",{}).catch(()=>{});if(CUR)renderAll();save();setMsg("impMsg","Device and playback results cleared.",true);};
+const resetAll=()=>{DEVICES=[];PLAYS=[];if(SERVER)API("/api/reset",{confirm:true}).catch(()=>{});if(CUR)renderAll();save();setMsg("impMsg","Device and playback results cleared.",true);};
 $("resetRes").addEventListener("click",resetAll);$("resetRes2").addEventListener("click",resetAll);
 
 $("f").addEventListener("submit",e=>{e.preventDefault();submit();});

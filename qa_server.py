@@ -171,6 +171,8 @@ class H(BaseHTTPRequestHandler):
             elif u.path == "/api/config":
                 STATE["cfg"] = b.get("cfg")
             elif u.path == "/api/reset":
+                if not b.get("confirm"):          # ignore resets from old copies of the page still open in other tabs
+                    return self.send(200, {"ok": False, "ignored": True})
                 STATE["devices"], STATE["plays"] = [], []
             else:
                 return self.send(404, {"error": "not found"})
