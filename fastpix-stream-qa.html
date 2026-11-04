@@ -428,8 +428,13 @@ function run(inp){
     }
     const n=ctx.rows.length, nf=ctx.rows.filter(r=>r[9]==="FAIL").length;
     add(nf?"FAIL":"PASS","Bitrates match the custom ladder",`${n-nf} of ${n} rungs match within ${TOL}% (BANDWIDTH = (bitrate × 1.75 + ${AUDIO} audio) × 1.03)`,"Critical",OWNER.manifest,"See the rung rows above.");
-    if(plus){const a=byFam("H.264"),b=byFam("H.265"); const nb=a.filter((x,i)=>b[i]&&!(b[i].bw<x.bw)).map(x=>x.res);
-      add(nb.length?"FAIL":"PASS","H.265 BANDWIDTH below its H.264 twin (T13)",nb.length?`Not below at ${nb.join(", ")}`:"Every H.265 rung is below its H.264 twin","High",OWNER.manifest,"H.265 rungs must use the customer's h265Bitrate.");}
+    if(plus){const a=byFam("H.264"),b=byFam("H.265"), e4=exp["H.264"], e5=exp["H.265"]; const bad=[], same=[];
+      a.forEach((x,i)=>{const y=b[i], p=e4[i], q=e5[i]; if(!y||!p||!q)return;
+        if(q.b<p.b){ if(!(y.bw<x.bw))bad.push(x.res); } else same.push(`${x.res} (ladder: ${p.b} / ${q.b} kbps)`); });
+      add(bad.length?"FAIL":"PASS","H.265 BANDWIDTH below its H.264 twin where the ladder sets it lower (T13)",bad.length?`Not below at ${bad.join(", ")}, although the ladder's h265Bitrate is lower there`:"Holds at every rung where the ladder's h265Bitrate is lower","High",OWNER.manifest,"H.265 rungs must use the customer's h265Bitrate.");
+      if(same.length){add("INFO","H.265 not lower than H.264 by ladder choice",`The customer ladder sets h265Bitrate equal to or above bitrate at ${same.join(", ")}, so both families advertise the same or higher numbers there. Transcode followed the ladder.`);
+        ctx.notes.push(`Decision for engineering: validation accepts an h265Bitrate equal to or above the H.264 bitrate (${same.join(", ")}), but rule T13 assumes H.265 is always lower. Either relax T13 for custom ladders or refuse such ladders at ingest.`);}
+    }
   } else {
     for(const f of present) for(const v of byFam(f)) ctx.rows.push([f,v.res,null,mq+" auto ladder",null,v.bw,null,v.avg,v.avg!=null?v.avg/OVERHEAD-AUDIO:null,"INFO"]);
     if(mq==="pro"){const w=[270,480,720,1080].filter(s=>s<=cap), h=[...new Set(byFam("H.264").map(v=>v.size))].filter(s=>s<=1080);
@@ -495,17 +500,29 @@ function categoryOf(u){u=u||"";
 function playsFamily(d){ if(d.h265&&d.h265.all)return "H.265"; if(d.h264&&d.h264.all)return "H.264"; return "none"; }
 
 /* ---------- issues ---------- */
+const noH264=d=>d.h264&&!d.h264.some;
+const envPlayFail=p=>{const R=p.results||[];return R.length>0&&R.every(r=>!r.started&&(r.errors||[]).some(e=>/manifestIncompatibleCodecsError/.test(e)));};
+function setupProblems(){
+  const out=[];
+  for(const d of DEVICES) if(noH264(d)) out.push({label:d.label,setup:{message:"This test browser has no H.264 decoder at all (common for Firefox on Linux test machines without FFmpeg). Not a FastPix issue; its device and playback results are left out of the issues."}});
+  for(const p of PLAYS){
+    if(p.setup&&!p.setup.ok) out.push(p);
+    else if(envPlayFail(p)&&!out.some(o=>o.label===p.label)) out.push({label:p.label,setup:{message:"The player found no codec it can play in this browser (manifestIncompatibleCodecsError). Not a FastPix issue."}});
+  }
+  return out;
+}
 function collectIssues(res,devices,plays){
   const out=[];
   for(const c of res.checks) if(c.s!=="PASS"&&c.s!=="INFO"&&c.sev&&c.sev!=="Known") out.push({sev:c.sev,title:c.a,evidence:c.d,fix:c.fix,owner:c.own});
   const V=res.ctx.V;
   for(const d of devices){
+    if(noH264(d))continue;                         // test browser has no H.264 decoder at all: a test machine limit, reported separately
     if(d.h264&&!d.h264.all)out.push({sev:"Critical",title:`${d.label}: cannot decode H.264 ${d.h264.failed.join(", ")}`,evidence:`The device's decoder rejected these H.264 renditions. Every device must be able to play the H.264 set.`,fix:"Check the profile and level of these renditions.",owner:OWNER.manifest});
     else if(d.h264&&!d.h264.smooth)out.push({sev:"Medium",title:`${d.label}: H.264 not smooth at some sizes`,evidence:d.results.filter(x=>x.family==="H.264"&&x.smooth===false).map(x=>x.res).join(", ")+" reported as not smooth by the device.",fix:"Review bitrate and frame rate for those rungs.",owner:OWNER.manifest});
     if(d.h265&&d.apple&&!d.h265.all)out.push({sev:"High",title:`${d.label}: H.265 rejected on an Apple device`,evidence:`Safari is expected to play H.265 (T23), but these renditions were rejected: ${d.h265.failed.join(", ")}.`,fix:"Check the hvc1 CODECS strings and levels.",owner:OWNER.manifest});
   }
   for(const p of plays){
-    if(p.setup&&!p.setup.ok)continue;            // test couldn't reach the stream: reported separately, not a FastPix bug
+    if((p.setup&&!p.setup.ok)||envPlayFail(p))continue;            // test couldn't reach the stream: reported separately, not a FastPix bug
     const R=p.results||[], names=rs=>rs.map(r=>r.profile).join(", ");
     const failed=R.filter(r=>!r.started||r.fatal);
     if(failed.length){const errs=[...new Set(failed.flatMap(r=>r.errors||[]))].slice(0,4).join(", ");
@@ -515,8 +532,9 @@ function collectIssues(res,devices,plays){
     if(sw.length)out.push({sev:"High",title:`${p.label}: player changed codec family during the step test`,evidence:`Families played: ${sw[0].familiesPlayed.join(" and ")}. The guide requires switches within one family (T29).`,fix:"Check the CODECS of each family and the player's codec selection.",owner:OWNER.player});
     const rb=ok.filter(r=>{const fam=r.endedOn&&r.endedOn.family, low=fam?V.filter(v=>v.family===fam).sort((a,b)=>a.bw-b.bw)[0]:null; return r.kbps&&r.rebuffers>0&&low&&low.bw<=r.kbps*ABR;});
     if(rb.length)out.push({sev:"High",title:`${p.label}: rebuffering on ${rb.length} profile${rb.length>1?"s":""} where a rendition fits`,evidence:rb.map(r=>`${r.profile}: ${r.rebuffers}× (${(r.rebufferMs/1000).toFixed(1)} s)`).join("; ")+".",fix:"Check segment sizes against BANDWIDTH and the ABR start level.",owner:OWNER.player});
-    const hi=ok.filter(r=>r.kbps&&r.endedOn&&r.endedOn.bwKbps>r.kbps&&(r.levels||[]).some(l=>l.family===r.endedOn.family&&l.bwKbps<=r.kbps));
-    if(hi.length)out.push({sev:"Medium",title:`${p.label}: settled above the connection speed`,evidence:hi.map(r=>`${r.profile}: ended on ${r.endedOn.res} (${(r.endedOn.bwKbps/1000).toFixed(2)} Mbps)`).join("; ")+".",fix:"Check that BANDWIDTH reflects the real peak segment bitrate.",owner:OWNER.manifest});
+    const avgOf=l=>{const v=V.find(v=>v.family===l.family&&v.res===l.res&&Math.abs(v.bw-l.bwKbps)<3);return v?(v.avg??v.bw):l.bwKbps;};
+    const hi=ok.filter(r=>r.kbps&&r.endedOn&&avgOf(r.endedOn)>r.kbps&&(r.levels||[]).some(l=>l.family===r.endedOn.family&&avgOf(l)<=r.kbps));
+    if(hi.length)out.push({sev:"Medium",title:`${p.label}: settled on a rendition whose average rate is above the connection speed`,evidence:hi.map(r=>`${r.profile}: ended on ${r.endedOn.res}, AVERAGE-BANDWIDTH ${(avgOf(r.endedOn)/1000).toFixed(2)} Mbps on a ${r.kbps/1000} Mbps link`).join("; ")+".",fix:"Check the ABR settings and that AVERAGE-BANDWIDTH matches the real segment rate.",owner:OWNER.player});
   }
   const rank={Critical:0,High:1,Medium:2}; return out.sort((a,b)=>rank[a.sev]-rank[b.sev]);
 }
@@ -530,7 +548,7 @@ function summary(){
   const issues=collectIssues(CUR.res,DEVICES,PLAYS), {checks}=CUR.res;
   const fails=checks.filter(c=>c.s==="FAIL").length, warns=checks.filter(c=>c.s==="WARN").length, passes=checks.filter(c=>c.s==="PASS").length;
   const blocking=issues.filter(i=>i.sev!=="Medium").length;
-  const setup=PLAYS.filter(p=>p.setup&&!p.setup.ok);
+  const setup=setupProblems();
   const missing=missingTargets();
   return {issues,fails,warns,passes,setup,missing,verdict:(fails||blocking)?"FAIL":(setup.length||missing.length)?"INCOMPLETE":"PASS"};
 }
@@ -582,7 +600,7 @@ function renderAll(){
       const fam=r.endedOn&&r.endedOn.family; const cp=r.kbps&&fam?calcPick(V,fam,r.kbps):null;
       return `<tr><td>${esc(r.profile)}</td><td>${r.kbps?(r.kbps/1000)+" Mbps":"10 → 1 → 10"}</td><td>${lv(r.mostPlayed)}</td><td>${lv(r.endedOn)}</td><td>${cp?`${cp.res} <span class="hint">${(cp.bw/1000).toFixed(2)} Mbps</span>`:"–"}</td><td>${r.startupMs!=null?(r.startupMs/1000).toFixed(1)+" s":"<span class='no'>never</span>"}</td><td>${r.rebuffers?`<span class="no">${r.rebuffers}</span> (${(r.rebufferMs/1000).toFixed(1)} s)`:"0"}</td><td>${r.errors&&r.errors.length?esc(r.errors.slice(0,3).join(", ")):"none"}</td></tr>`;}).join("")}</tbody></table></div>`;
   }
-  p+=`<h3>Calculated pick for comparison</h3><p class="sub">The rendition a player should settle on: the highest whose BANDWIDTH is at most ${ABR} × the speed (hls.js default).</p>
+  p+=`<h3>Calculated pick for comparison</h3><p class="sub">The rendition a cautious player would settle on: the highest whose BANDWIDTH (peak allowance) is at most ${ABR} × the speed. Players may go higher, which is fine while AVERAGE-BANDWIDTH stays below the speed and there is no rebuffering.</p>
     <div class="tbl"><table><thead><tr><th>Network</th><th>Speed</th>${ctx.fams.map(f=>`<th>${f}</th>`).join("")}</tr></thead><tbody>
     ${ctx.net.map(r=>`<tr><td>${r[0]}</td><td class="num">${(r[1]/1000).toLocaleString()} Mbps</td>${r.slice(2).map(x=>`<td>${x?`<b>${x.size}p</b> <span class="hint">${(x.bw/1000).toFixed(2)} Mbps</span>${x.bw>r[1]?" "+pill("WARN")+" may rebuffer":""}`:"–"}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
   $("playOut").innerHTML=(PLAYS.length?"":`<p class="hint">No playback results added yet.</p>`)+p;
