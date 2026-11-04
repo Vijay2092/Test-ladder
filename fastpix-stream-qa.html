@@ -768,7 +768,7 @@ async function fetchManifest(){
   const u=$("url").value.trim(); setMsg("formerr","",null); $("formerr").hidden=true;
   if(!/^https?:\/\/.+/i.test(u)){$("formerr").textContent="Enter the playback URL first.";$("formerr").hidden=false;return false;}
   $("fetchBtn").disabled=true;
-  try{let r; try{ if(AUTORUN&&SERVER)throw 0; r=await fetch(u,{cache:"no-store"});}catch(x){ if(!SERVER)throw x; r=await fetch("/proxy?u="+encodeURIComponent(u),{cache:"no-store"}); }
+  try{let r; try{ if(AUTORUN&&SERVER)throw 0; r=await fetch(u,{cache:"no-store",signal:AbortSignal.timeout?AbortSignal.timeout(20000):undefined});}catch(x){ if(!SERVER)throw x; r=await fetch("/proxy?u="+encodeURIComponent(u),{cache:"no-store"}); }
     let t=await r.text(); if(t.includes("/proxy?u=")){t=t.split(/\r?\n/).map(l=>l.startsWith("/proxy?u=")?decodeURIComponent(l.slice(9)):l.replace(/URI="\/proxy\?u=([^"]+)"/g,(m,x)=>`URI="${decodeURIComponent(x)}"`)).join("\n");}
     if(!r.ok||!t.includes("#EXTM3U"))throw new Error(r.ok?"not a playlist":"HTTP "+r.status);
     $("m3u8").value=t; isExample=false;
@@ -833,7 +833,7 @@ function runProfile(url,name,kbps,secs){
 }
 function setStep(i,state,text){const e=$("st"+i);if(!e)return;e.className="step "+state;e.querySelector(".st").textContent={wait:"WAITING",run:"RUNNING",done:"DONE",fail:"FAILED",skip:"SKIPPED"}[state];if(text)$("st"+i+"t").textContent=text;}
 async function probe(u,range){
-  try{const r=await fetch(u,{cache:"no-store",headers:range?{Range:"bytes=0-1023"}:{}}); return {ok:r.ok||r.status===206,status:r.status,text:range?null:await r.text()};}
+  try{const r=await fetch(u,{cache:"no-store",headers:range?{Range:"bytes=0-1023"}:{},signal:AbortSignal.timeout?AbortSignal.timeout(20000):undefined}); return {ok:r.ok||r.status===206,status:r.status,text:range?null:await r.text()};}
   catch(e){return {ok:false,status:0};}
 }
 function why(step,pr){
@@ -954,17 +954,19 @@ $("thisDev").textContent=categoryOf(navigator.userAgent);
 restore().then(async()=>{
   if(!AUTORUN)return;
   try{
-    const c=JSON.parse(decodeURIComponent(escape(atob(QS.get("cfg").replace(/-/g,"+").replace(/_/g,"/")))));
+    let c=null;
+    try{ if(SERVER){const st=await API("/api/state"); if(st&&st.cfg)c=st.cfg;} }catch(e){}
+    if(!c){ let b64=(QS.get("cfg")||"").replace(/-/g,"+").replace(/_/g,"/"); while(b64.length%4)b64+="="; c=JSON.parse(decodeURIComponent(escape(atob(b64)))); }
     writeForm({url:c.url,m3u8:"",pid:c.pid||"",mid:c.mid||"",mq:c.mq,tier:c.tier||"",ladder:c.ladder||"",maxres:c.maxres||"1080p",drm:!!c.drm});
     isExample=false; $("devLabel").value=QS.get("model")||"";
     if(Array.isArray(c.profiles))PROFILES.forEach((p,i)=>{$("p"+i).checked=c.profiles.includes(i);});
     if(c.secs)$("secs").value=c.secs;
     await runFull();
-  }catch(e){ console.error(e); }
+  }catch(e){ console.error(e); window.__autorunError=e&&e.message; }
   if(!(MYREC&&MYREC.complete)){const r={label:deviceName(),tag:TAG,category:categoryOf(navigator.userAgent),at:new Date().toISOString(),complete:true,
     setup:{ok:false,message:(()=>{const fe=$("formerr");const st=[1,2,3].map(i=>$("st"+i).querySelector(".st").textContent+" "+$("st"+i+"t").textContent);
       const why=(!fe.hidden&&fe.textContent)?fe.textContent:($("status").textContent&&$("status").textContent!=="Ready."?$("status").textContent:"");
-      return "The test stopped early in this browser. "+(why?why+" ":"")+"Steps: "+st.join(" | ");})()},results:[],env:{browser:navigator.userAgent,hls:window.Hls?Hls.version:null}};PLAYS.push(r);pushResult([],[r]);}
+      return "The test stopped early in this browser. "+(window.__autorunError?"Error: "+window.__autorunError+". ":"")+(why?why+" ":"")+"Steps: "+st.join(" | ");})()},results:[],env:{browser:navigator.userAgent,hls:window.Hls?Hls.version:null}};PLAYS.push(r);pushResult([],[r]);}
   document.title="QA_DONE";
 });
 

@@ -29,7 +29,7 @@ async function waitDone(tag, ms = perBrowserMs) {
 }
 
 const TARGETS = {
-  windows: [['win-chrome', 'chrome', 'chromium'], ['win-edge', 'msedge', 'chromium'], ['win-firefox', 'Windows', 'firefox']],
+  windows: [['win-chrome', 'chrome', 'chromium'], ['win-edge', 'msedge', 'chromium'], ['win-firefox', 'Windows', 'selenium-firefox']],
   macos:   [['mac-safari', 'safari', 'safari'], ['mac-chrome', 'chrome', 'chromium'], ['mac-firefox', 'Mac', 'firefox']],
   linux:   [['linux-chrome', 'chrome', 'chromium'], ['linux-firefox', 'Linux', 'firefox']],
 };
@@ -48,20 +48,29 @@ async function runPlaywright(tag, channelOrModel, engine) {
   await browser.close();
 }
 
-async function runSafari(tag) {
+async function runSafari(tag, browserName = 'safari') {
   const { Builder } = await import('selenium-webdriver');
-  const driver = await new Builder().forBrowser('safari').build();
-  try { await driver.get(urlFor(tag)); await waitDone(tag); } finally { await driver.quit(); }
+  let builder = new Builder().forBrowser(browserName);
+  if (browserName === 'firefox') {
+    const firefox = await import('selenium-webdriver/firefox.js');
+    const o = new firefox.Options().addArguments('-headless');
+    o.setPreference('media.autoplay.default', 0); o.setPreference('media.autoplay.blocking_policy', 0);
+    builder = builder.setFirefoxOptions(o);
+  }
+  const driver = await builder.build();
+  try { await driver.get(urlFor(tag, browserName === 'firefox' ? 'Windows' : '')); await waitDone(tag); } finally { await driver.quit(); }
 }
 
 const [mode, a, b] = process.argv.slice(2);
+// Hand the settings to the page through the server too, so they don't depend on a long URL surviving.
+if (mode !== 'wait') { try { await fetch(BASE + 'api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cfg }) }); } catch {} }
 if (mode === 'one') {
   const t = Object.values(TARGETS).flat().find(x => x[0] === a);
   if (!t) { console.log('unknown target ' + a); process.exit(1); }
   console.log(`\n▶ ${a}`);
   let lastErr = null;
   for (let attempt = 1; attempt <= 2; attempt++) {
-    try { t[2] === 'safari' ? await runSafari(a) : await runPlaywright(a, t[1], t[2]); lastErr = null; break; }
+    try { t[2] === 'safari' ? await runSafari(a) : t[2] === 'selenium-firefox' ? await runSafari(a, 'firefox') : await runPlaywright(a, t[1], t[2]); lastErr = null; break; }
     catch (e) { lastErr = e; console.log(`  ✗ ${a} attempt ${attempt} failed: ${e.message}`); await new Promise(r => setTimeout(r, 5000)); }
   }
   if (lastErr) await markTimeout(a, `The browser could not start on the test machine after 2 attempts: ${lastErr.message}`);

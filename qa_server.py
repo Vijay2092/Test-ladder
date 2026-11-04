@@ -168,6 +168,8 @@ class H(BaseHTTPRequestHandler):
                     STATE["devices"] = [x for x in STATE["devices"] if key(x) != key(d)] + [d]
                 for p in b.get("playback", []):
                     STATE["plays"] = [x for x in STATE["plays"] if key(x) != key(p)] + [p]
+            elif u.path == "/api/config":
+                STATE["cfg"] = b.get("cfg")
             elif u.path == "/api/reset":
                 STATE["devices"], STATE["plays"] = [], []
             else:
