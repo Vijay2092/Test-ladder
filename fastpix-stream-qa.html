@@ -722,14 +722,16 @@ function submit(){
   const inp={text,url:$("url").value.trim(),pid:$("pid").value.trim(),mid:$("mid").value.trim(),mq:$("mq").value,tier:$("mq").value==="standard"?"":$("tier").value,
     ladder,src:"",maxres:$("maxres").value,drm:$("drm").checked,example:isExample};
   const media=(inp.pid||inp.url.split("?")[0]||"").trim();
-  if(!isExample&&media&&LASTMEDIA&&media!==LASTMEDIA){DEVICES=[];PLAYS=[];if(SERVER)API("/api/reset",{}).catch(()=>{});}
   if(!isExample&&media)LASTMEDIA=media;
+  DEVICES=DEVICES.filter(sameMedia);PLAYS=PLAYS.filter(sameMedia);
   CUR={res:run(inp),inp}; renderAll(); return true;
 }
 
 /* ---------- persistence (this browser only) ---------- */
 let SERVER=null, REV=-1, applying=false;
 let MYREC=null, LASTMEDIA=null;
+const curMedia=()=>($("pid").value.trim()||$("url").value.trim().split("?")[0]);
+const sameMedia=r=>!r.pid||!curMedia()||r.pid===curMedia();
 const QS=new URLSearchParams(location.search), AUTORUN=QS.get("autorun")==="1", TAG=QS.get("device")||null;
 const API=(path,body)=>fetch(path,{method:body?"POST":"GET",headers:body?{"Content-Type":"application/json"}:{},body:body?JSON.stringify(body):undefined,cache:"no-store"}).then(r=>r.json());
 function save(){
@@ -741,8 +743,8 @@ function applyState(st,first){
   if(AUTORUN)return;
   applying=true;
   if(st.targets)REQUIRED=new Set(st.targets);
-  if(st.form&&st.form.m3u8&&(first||JSON.stringify(st.form)!==JSON.stringify({...readForm(),drm:$("drm").checked}))&&!busy){writeForm(st.form);isExample=false;submit();}
-  DEVICES=st.devices||[];PLAYS=st.plays||[];
+  if(st.form&&st.form.m3u8&&first&&!busy){writeForm(st.form);isExample=false;submit();}
+  DEVICES=(st.devices||[]).filter(sameMedia);PLAYS=(st.plays||[]).filter(sameMedia);
   if(CUR)renderAll();
   applying=false;
 }
@@ -865,7 +867,7 @@ async function runPlayback(){
   busy=true;stopFlag=false;$("playRun").disabled=true;$("runAll").disabled=true;$("playStop").disabled=false;
   const label=deviceName();
   PLAYS=PLAYS.filter(p=>p.imported||p.label!==label);          // replace this device's earlier playback run
-  const rec=MYREC={label,tag:TAG,category:categoryOf(navigator.userAgent),at:new Date().toISOString(),url:url.split("?")[0],env:{browser:navigator.userAgent,hls:Hls.version},results:[]};
+  const rec=MYREC={label,tag:TAG,pid:curMedia(),category:categoryOf(navigator.userAgent),at:new Date().toISOString(),url:url.split("?")[0],env:{browser:navigator.userAgent,hls:Hls.version},results:[]};
   setStep(3,"run","Checking the stream can be reached…"); setMsg("status","Checking the master playlist, first rendition and first segment…");
   let pf=await preflight(url), playUrl=url;
   if(!pf.ok&&SERVER&&/blocked/.test(pf.message)){const purl=location.origin+"/proxy?u="+encodeURIComponent(url); const pf2=await preflight(purl);
@@ -891,7 +893,7 @@ $("playStop").addEventListener("click",()=>{stopFlag=true;active&&active.finish(
 /* ---------- device test ---------- */
 async function runDevice(){
   if(!CUR)return; $("devRun").disabled=true; setMsg("devMsg","Testing…");
-  try{ const d=await testDevice(CUR.res.ctx.V); d.category=categoryOf(navigator.userAgent); d.label=deviceName(); d.tag=TAG;
+  try{ const d=await testDevice(CUR.res.ctx.V); d.category=categoryOf(navigator.userAgent); d.label=deviceName(); d.tag=TAG; d.pid=curMedia();
     DEVICES=[...DEVICES.filter(x=>!(x.ua===d.ua&&x.label===d.label)),d]; renderAll(); save(); pushResult([d],[]);
     setMsg("devMsg",`Added: ${d.label}.`,true); }
   catch(e){ setMsg("devMsg","The device test couldn't run in this browser.",false); }
@@ -963,7 +965,7 @@ restore().then(async()=>{
     if(c.secs)$("secs").value=c.secs;
     await runFull();
   }catch(e){ console.error(e); window.__autorunError=e&&e.message; }
-  if(!(MYREC&&MYREC.complete)){const r={label:deviceName(),tag:TAG,category:categoryOf(navigator.userAgent),at:new Date().toISOString(),complete:true,
+  if(!(MYREC&&MYREC.complete)){const r={label:deviceName(),tag:TAG,pid:curMedia(),category:categoryOf(navigator.userAgent),at:new Date().toISOString(),complete:true,
     setup:{ok:false,message:(()=>{const fe=$("formerr");const st=[1,2,3].map(i=>$("st"+i).querySelector(".st").textContent+" "+$("st"+i+"t").textContent);
       const why=(!fe.hidden&&fe.textContent)?fe.textContent:($("status").textContent&&$("status").textContent!=="Ready."?$("status").textContent:"");
       return "The test stopped early in this browser. "+(window.__autorunError?"Error: "+window.__autorunError+". ":"")+(why?why+" ":"")+"Steps: "+st.join(" | ");})()},results:[],env:{browser:navigator.userAgent,hls:window.Hls?Hls.version:null}};PLAYS.push(r);pushResult([],[r]);}
