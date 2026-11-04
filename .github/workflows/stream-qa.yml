@@ -18,71 +18,78 @@ env:
   QA_CONFIG: ${{ inputs.config }}
 
 jobs:
-  windows:
-    name: Windows - Chrome, Edge, Firefox
-    runs-on: windows-latest
-    timeout-minutes: 40
+  desktop:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: "Windows - Chrome",  os: windows-latest, target: win-chrome }
+          - { name: "Windows - Edge",    os: windows-latest, target: win-edge }
+          - { name: "Windows - Firefox", os: windows-latest, target: win-firefox }
+          - { name: "Mac - Safari",      os: macos-14,       target: mac-safari }
+          - { name: "Mac - Chrome",      os: macos-14,       target: mac-chrome }
+          - { name: "Mac - Firefox",     os: macos-14,       target: mac-firefox }
+          - { name: "Linux - Chrome",    os: ubuntu-latest,  target: linux-chrome }
+          - { name: "Linux - Firefox",   os: ubuntu-latest,  target: linux-firefox }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 20 }
       - uses: actions/setup-python@v5
         with: { python-version: '3.12' }
-      - run: npm install --no-save playwright@1.47.2 && npx playwright install firefox
+      - name: Install test tools
+        shell: bash
+        run: |
+          npm install --no-save playwright@1.47.2 selenium-webdriver@4.25.0
+          case "${{ matrix.target }}" in
+            *firefox) npx playwright install firefox ;;
+          esac
+          if [ "${{ matrix.target }}" = "linux-firefox" ]; then sudo apt-get update && sudo apt-get install -y ffmpeg libavcodec-extra && npx playwright install-deps firefox; fi
+          if [ "${{ matrix.target }}" = "mac-safari" ]; then sudo safaridriver --enable; fi
       - name: Start QA server
+        if: runner.os == 'Windows'
         shell: pwsh
         run: Start-Process -FilePath python -ArgumentList "qa_server.py" -WindowStyle Hidden; Start-Sleep 3
-      - run: node run-browsers.mjs windows
+      - name: Start QA server
+        if: runner.os != 'Windows'
+        run: nohup python3 qa_server.py > server.log 2>&1 & sleep 3
+      - name: Run test
+        run: node run-browsers.mjs one ${{ matrix.target }}
       - if: always()
         uses: actions/upload-artifact@v4
-        with: { name: results-windows, path: qa_state.json, if-no-files-found: ignore }
+        with: { name: "results-${{ matrix.target }}", path: "qa_state.json\nshot-*.png", if-no-files-found: ignore }
 
-  macos:
-    name: Mac - Safari, Chrome, Firefox, iPhone simulator
+  ios:
+    name: iPhone simulator - Safari
     runs-on: macos-14
-    timeout-minutes: 50
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 20 }
-      - run: npm install --no-save playwright@1.47.2 selenium-webdriver@4.25.0 && npx playwright install firefox
-      - run: sudo safaridriver --enable
       - name: Start QA server
         run: nohup python3 qa_server.py > server.log 2>&1 & sleep 3
-      - run: node run-browsers.mjs macos
-      - name: iPhone simulator - Safari
-        continue-on-error: true
+      - name: Run test in the iPhone simulator
         run: |
           UDID=$(xcrun simctl list devices available -j | python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; print(next(x['udid'] for k,v in d.items() if 'iOS' in k for x in v if x['name'].startswith('iPhone')))")
           xcrun simctl boot "$UDID" || true
           xcrun simctl bootstatus "$UDID" -b
+          sleep 20
           xcrun simctl openurl "$UDID" "$(node run-browsers.mjs url ios-safari Simulator)"
-          node run-browsers.mjs wait ios-safari
+          sleep 60; xcrun simctl io "$UDID" screenshot shot-ios-1min.png || true
+          node run-browsers.mjs wait ios-safari || true
+          xcrun simctl io "$UDID" screenshot shot-ios-end.png || true
       - if: always()
         uses: actions/upload-artifact@v4
-        with: { name: results-macos, path: qa_state.json, if-no-files-found: ignore }
-
-  linux:
-    name: Linux - Chrome, Firefox
-    runs-on: ubuntu-latest
-    timeout-minutes: 40
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 20 }
-      - run: npm install --no-save playwright@1.47.2 && npx playwright install --with-deps firefox
-      - name: Start QA server
-        run: nohup python3 qa_server.py > server.log 2>&1 & sleep 3
-      - run: node run-browsers.mjs linux
-      - if: always()
-        uses: actions/upload-artifact@v4
-        with: { name: results-linux, path: qa_state.json, if-no-files-found: ignore }
+        with: { name: results-ios, path: "qa_state.json\nshot-*.png\nserver.log", if-no-files-found: ignore }
 
   android:
     name: Android emulator - Chrome
     runs-on: ubuntu-latest
-    timeout-minutes: 45
-    continue-on-error: true
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -103,11 +110,11 @@ jobs:
           script: bash android.sh
       - if: always()
         uses: actions/upload-artifact@v4
-        with: { name: results-android, path: qa_state.json, if-no-files-found: ignore }
+        with: { name: results-android, path: "qa_state.json\nshot-*.png", if-no-files-found: ignore }
 
   report:
     name: Combine results
-    needs: [windows, macos, linux, android]
+    needs: [desktop, ios, android]
     if: always()
     runs-on: ubuntu-latest
     steps:
