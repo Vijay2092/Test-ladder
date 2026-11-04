@@ -634,8 +634,8 @@ async function makePdf(){
       ["Source / maxResolution",`${inp.src||"not given"} / ${inp.maxres}`],["DRM",inp.drm?"yes":"no"],["Devices tested / playback runs",`${DEVICES.length} / ${PLAYS.length}`]]});
     y=doc.lastAutoTable.finalY+20;
     doc.setFont("helvetica","bold");doc.setFontSize(15);doc.setTextColor(...C[S.verdict]);doc.text(`Overall: ${S.verdict}`,M,y);
-    doc.setFont("helvetica","normal");doc.setFontSize(10);doc.setTextColor(0);
-    doc.text(`${S.issues.length} issues to fix (${S.issues.filter(i=>i.sev==="Critical").length} critical, ${S.issues.filter(i=>i.sev==="High").length} high, ${S.issues.filter(i=>i.sev==="Medium").length} medium)  |  ${S.passes} checks passed, ${S.fails} failed, ${S.warns} warnings`,M+120,y);
+    const vw=doc.getTextWidth(`Overall: ${S.verdict}`);doc.setFont("helvetica","normal");doc.setFontSize(10);doc.setTextColor(0);
+    doc.text(`${S.issues.length} issues to fix (${S.issues.filter(i=>i.sev==="Critical").length} critical, ${S.issues.filter(i=>i.sev==="High").length} high, ${S.issues.filter(i=>i.sev==="Medium").length} medium)  |  ${S.passes} checks passed, ${S.fails} failed, ${S.warns} warnings`,M+vw+16,y);
     doc.lastAutoTable.finalY=y;
     if(ctx.expFail){doc.setFontSize(9);doc.text(doc.splitTextToSize("Expected ingest failure: "+ctx.expFail,W-2*M),M,y+14);doc.lastAutoTable.finalY=y+16;}
     if(S.setup.length){let sy0=section("Playback test could not run","Test setup problem, not a FastPix bug; not counted as an issue.");
@@ -667,7 +667,7 @@ async function makePdf(){
     for(const run of PLAYS){
       doc.autoTable({...base,startY:sy,head:[[{content:`${run.label}  |  hls.js ${run.env&&run.env.hls}  |  ${new Date(run.at).toLocaleString("en-IN",{dateStyle:"medium",timeStyle:"short"})}`,colSpan:8}],["Profile","Speed","Mostly played","Ended on","Calculated pick","Start-up","Rebuffers","Errors"]],
         body:(run.results||[]).map(r=>{const lv=x=>x?`${x.res} ${x.family} (${(x.bwKbps/1000).toFixed(2)} Mbps)`:"–";const fam=r.endedOn&&r.endedOn.family;const cp=r.kbps&&fam?calcPick(ctx.V,fam,r.kbps):null;
-          return [r.profile,r.kbps?(r.kbps/1000)+" Mbps":"10 > 1 > 10 Mbps",lv(r.mostPlayed),lv(r.endedOn),cp?`${cp.res} (${(cp.bw/1000).toFixed(2)} Mbps)`:"–",r.startupMs!=null?(r.startupMs/1000).toFixed(1)+" s":"never",r.rebuffers?`${r.rebuffers} (${(r.rebufferMs/1000).toFixed(1)} s)`:"0",(r.errors||[]).slice(0,3).join(", ")||"none"];})});
+          return [String(r.profile).replace(/→/g,">"),r.kbps?(r.kbps/1000)+" Mbps":"10 > 1 > 10 Mbps",lv(r.mostPlayed),lv(r.endedOn),cp?`${cp.res} (${(cp.bw/1000).toFixed(2)} Mbps)`:"–",r.startupMs!=null?(r.startupMs/1000).toFixed(1)+" s":"never",r.rebuffers?`${r.rebuffers} (${(r.rebufferMs/1000).toFixed(1)} s)`:"0",(r.errors||[]).slice(0,3).join(", ")||"none"];})});
       sy=doc.lastAutoTable.finalY+10;
     }
     sy=section("Calculated pick by network");
@@ -976,8 +976,12 @@ function renderJobs(jobs,runUrl){
 async function loadCloud(key){
   const txt=await gh(`/contents/results/${key}.json?ref=qa-results`,{raw:true});
   const o=JSON.parse(txt);
-  DEVICES=o.devices||[];PLAYS=o.plays||[];
-  const cov=new Set(DEVICES.map(d=>d.category||categoryOf(d.ua)));REQUIRED=new Set([...cov].filter(t=>TARGETS.includes(t)));
+  const k=x=>`${x.label}|${x.ua||(x.env&&x.env.browser)||""}`;
+  const cd=(o.devices||[]).map(d=>({...d,cloud:true})), cp=(o.plays||[]).map(p=>({...p,cloud:true}));
+  const nd=new Set(cd.map(k)), np=new Set(cp.map(k));
+  DEVICES=[...DEVICES.filter(d=>!nd.has(k(d))),...cd]; PLAYS=[...PLAYS.filter(p=>!np.has(k(p))),...cp];
+  if(SERVER){ try{ await API("/api/result",{devices:cd,playback:cp}); }catch(e){} }   // keep cloud results in the shared report
+  const cov=new Set(DEVICES.map(d=>d.category||categoryOf(d.ua)));TARGETS.forEach(t=>{if(cov.has(t))REQUIRED.add(t);});
   if(o.config&&!CUR){writeForm({...o.config,m3u8:$("m3u8").value});}
   renderAll();save();
   setMsg("cloudMsg",`Results loaded: ${DEVICES.length} device tests and ${PLAYS.length} playback runs. Download the PDF from the report.`,true);
