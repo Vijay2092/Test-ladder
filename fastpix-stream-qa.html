@@ -1,0 +1,996 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>FastPix Stream QA</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<style>
+/* Layout: settings panel left, report right; issues to fix lead the report; stacks on phones */
+:root{
+  --bg:#f5f7fa; --panel:#ffffff; --fg:#17202e; --muted:#5b6677; --line:#d9dfe8; --soft:#eef2f7;
+  --accent:#1f5fd6; --accent-fg:#ffffff;
+  --pass:#13804a; --pass-bg:#e3f4ea; --fail:#c62828; --fail-bg:#fbe7e7; --warn:#8a5a00; --warn-bg:#fdf1d8; --info:#4d5a6c; --info-bg:#e9edf2;
+  --crit:#b3121f; --crit-bg:#fde3e5; --high:#c2410c; --high-bg:#ffeadd; --med:#8a5a00; --med-bg:#fdf1d8;
+  --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0f141b; --panel:#171e28; --fg:#e4e9f0; --muted:#97a3b4; --line:#2a3441; --soft:#1d2531;
+  --accent:#6b9cff; --accent-fg:#0b1220;
+  --pass:#4cc488; --pass-bg:#16301f; --fail:#ff7b7b; --fail-bg:#3a1b1b; --warn:#f0bb4f; --warn-bg:#352a12; --info:#a9b4c3; --info-bg:#222b37;
+  --crit:#ff8a8f; --crit-bg:#3d151a; --high:#ffa36b; --high-bg:#3a2214; --med:#f0bb4f; --med-bg:#352a12;
+  color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f141b; --panel:#171e28; --fg:#e4e9f0; --muted:#97a3b4; --line:#2a3441; --soft:#1d2531;
+  --accent:#6b9cff; --accent-fg:#0b1220;
+  --pass:#4cc488; --pass-bg:#16301f; --fail:#ff7b7b; --fail-bg:#3a1b1b; --warn:#f0bb4f; --warn-bg:#352a12; --info:#a9b4c3; --info-bg:#222b37;
+  --crit:#ff8a8f; --crit-bg:#3d151a; --high:#ffa36b; --high-bg:#3a2214; --med:#f0bb4f; --med-bg:#352a12;
+  color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:14px;line-height:1.5}
+.wrap{max-width:1440px;margin:0 auto;padding-block:20px 40px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+header{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:8px 24px;margin-bottom:16px}
+h1{font-size:22px;margin:0;font-weight:700;letter-spacing:-.01em;text-wrap:balance}
+header p{margin:0;color:var(--muted);font-size:13px}
+.grid{display:grid;grid-template-columns:minmax(300px,400px) minmax(0,1fr);gap:20px;align-items:start}
+@media (max-width:900px){.grid{grid-template-columns:minmax(0,1fr)}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px}
+.stack{display:flex;flex-direction:column;gap:12px}
+form{display:flex;flex-direction:column;gap:14px}
+fieldset{border:0;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+legend{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:6px;padding:0}
+label{display:flex;flex-direction:column;gap:4px;font-size:13px;font-weight:500}
+label small{font-weight:400;color:var(--muted);font-size:12px}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+input,select,textarea{font:inherit;font-size:13px;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:7px 9px;width:100%;min-width:0}
+textarea{font-family:var(--mono);font-size:11.5px;line-height:1.45;resize:vertical}
+input:focus,select:focus,textarea:focus,button:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.check{flex-direction:row;align-items:center;gap:8px;font-weight:500}
+.check input{width:auto}
+.btns{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+button{font:inherit;font-weight:600;font-size:13px;border-radius:6px;padding:8px 14px;cursor:pointer;border:1px solid var(--line);background:var(--soft);color:var(--fg)}
+button.primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+button.small{padding:5px 10px;font-size:12px}
+button:disabled{opacity:.5;cursor:not-allowed}
+.link{font-size:12px;color:var(--accent)}
+.hint{font-size:12px;color:var(--muted);margin:0}
+.err{font-size:12px;color:var(--fail);margin:0}
+.ok{font-size:12px;color:var(--pass);margin:0}
+.sep{height:1px;background:var(--line);border:0;margin:2px 0}
+.report{display:flex;flex-direction:column;gap:20px;min-width:0}
+.verdict{display:flex;flex-wrap:wrap;align-items:center;gap:12px 20px;padding:14px 16px;border-radius:10px;border:1px solid var(--line);background:var(--panel)}
+.verdict .big{font-size:20px;font-weight:700;padding:4px 14px;border-radius:6px}
+.verdict .meta{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px;color:var(--muted)}
+.verdict .meta b{color:var(--fg);font-weight:600}
+.verdict .spacer{flex:1}
+.example{font-size:12px;font-weight:600;color:var(--warn);background:var(--warn-bg);padding:3px 8px;border-radius:4px}
+section h2{font-size:15px;margin:0 0 4px;font-weight:600}
+section h3{font-size:13px;margin:12px 0 4px;font-weight:600}
+section .sub{font-size:12.5px;color:var(--muted);margin:0 0 8px;max-width:95ch}
+.tbl{overflow-x:auto;border:1px solid var(--line);border-radius:8px;background:var(--panel)}
+table{border-collapse:collapse;width:100%;font-size:12.5px}
+th{text-align:left;font-weight:600;font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);background:var(--soft);padding:7px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:6px 10px;border-bottom:1px solid var(--line);vertical-align:top;font-variant-numeric:tabular-nums}
+tr:last-child td{border-bottom:0}
+td.mono{font-family:var(--mono);font-size:11.5px}
+td.num{text-align:right}
+.pill{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.04em;padding:2px 7px;border-radius:4px;white-space:nowrap}
+.PASS{color:var(--pass);background:var(--pass-bg)} .FAIL{color:var(--fail);background:var(--fail-bg)}
+.WARN{color:var(--warn);background:var(--warn-bg)} .INFO,.SKIP{color:var(--info);background:var(--info-bg)}
+.Critical{color:var(--crit);background:var(--crit-bg)} .High{color:var(--high);background:var(--high-bg)} .Medium{color:var(--med);background:var(--med-bg)}
+.issues{border:2px solid var(--crit);border-radius:10px;background:var(--panel);overflow:hidden}
+.issues.clean{border-color:var(--pass)}
+.issues .head{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:baseline;padding:12px 16px;background:var(--crit-bg)}
+.issues.clean .head{background:var(--pass-bg)}
+.issues .head h2{margin:0;font-size:16px;color:var(--crit)}
+.issues.clean .head h2{color:var(--pass)}
+.issues .head span{font-size:12.5px;color:var(--muted)}
+.issue{display:grid;grid-template-columns:88px minmax(0,1fr);gap:4px 14px;padding:12px 16px;border-top:1px solid var(--line)}
+.issue .t{font-weight:600}
+.issue dl{margin:4px 0 0;display:grid;grid-template-columns:max-content minmax(0,1fr);gap:2px 10px;font-size:12.5px}
+.issue dt{color:var(--muted)} .issue dd{margin:0}
+@media (max-width:520px){.issue{grid-template-columns:minmax(0,1fr)}}
+ul.notes{margin:6px 0 0;padding-left:18px;font-size:12.5px;color:var(--muted)}
+.empty{padding:40px 16px;text-align:center;color:var(--muted)}
+.yes{color:var(--pass);font-weight:600}.no{color:var(--fail);font-weight:600}
+@media (prefers-reduced-motion:no-preference){button{transition:filter .15s}button:hover:not(:disabled){filter:brightness(1.06)}}
+.steps{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+@media (max-width:700px){.steps{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}}
+.step{border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:var(--panel);font-size:12.5px}
+.step b{display:block;font-size:13px;margin-bottom:2px}
+.step .st{font-weight:700;font-size:11px;letter-spacing:.04em}
+.step.run{border-color:var(--accent)} .step.run .st{color:var(--accent)}
+.step.done .st{color:var(--pass)} .step.fail .st{color:var(--fail)} .step.skip .st{color:var(--warn)} .step.wait .st{color:var(--muted)}
+.setup{border:2px solid var(--warn);border-radius:10px;background:var(--warn-bg);padding:12px 16px;font-size:13px}
+.setup h2{margin:0 0 6px;font-size:15px;color:var(--warn)}
+.INCOMPLETE{color:var(--warn);background:var(--warn-bg)}
+.cov{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 10px}
+.cov button{font-size:12px;font-weight:500;padding:4px 10px;border-radius:999px;border:1px dashed var(--line);background:transparent;color:var(--muted)}
+.cov button.req{border:1px solid var(--warn);color:var(--warn);background:var(--warn-bg)}
+.cov button.y{border:1px solid transparent;color:var(--pass);background:var(--pass-bg)}
+#qr{background:#fff;padding:8px;border-radius:8px;width:max-content}
+.howto{font-size:12.5px;margin:0 0 10px;padding-left:18px;color:var(--muted)}.howto b{color:var(--fg)}
+.mono{font-family:var(--mono);font-size:12px;word-break:break-all}
+video{width:100%;max-width:520px;background:#000;border-radius:8px;aspect-ratio:16/9}
+.profiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:4px 12px;font-size:13px}
+.profiles label{flex-direction:row;align-items:center;gap:6px;font-weight:400}
+.profiles input{width:auto}
+.status{font-size:13px;color:var(--muted)}.status b{color:var(--fg)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>FastPix Stream QA</h1>
+    <p>Rules from the H.265 and custom ladder QA guide, 4 Nov 2026</p>
+  </header>
+
+  <div class="grid">
+    <div class="stack">
+      <div class="panel stack" id="cloudPanel">
+        <div style="font-weight:600">Run on all devices (GitHub cloud)</div>
+        <p class="hint">Runs the full test on Windows (Chrome, Edge, Firefox), Mac (Safari, Chrome, Firefox), Linux (Chrome, Firefox), an iPhone simulator and an Android emulator, then brings every result back here. One-time setup: see README in the repo files.</p>
+        <div class="row">
+          <label>GitHub repo<input id="ghRepo" placeholder="your-org/stream-qa"></label>
+          <label>Branch<input id="ghBranch" value="main"></label>
+        </div>
+        <label>GitHub token
+          <small>Fine-grained token for that repo with Actions: read and write, and Contents: read. Kept only in this browser.</small>
+          <input id="ghToken" type="password" autocomplete="off" placeholder="github_pat_…">
+        </label>
+        <div class="btns">
+          <button type="button" class="primary" id="cloudRun">Run on all devices</button>
+          <button type="button" class="small" id="cloudLoad">Load last cloud results</button>
+        </div>
+        <p class="hint" id="cloudMsg"></p>
+        <div id="cloudJobs"></div>
+      </div>
+
+      <div class="panel stack" id="connectPanel">
+        <div style="font-weight:600">Test other devices</div>
+        <div id="srvOn" hidden class="stack">
+          <p class="hint">On each phone, tablet, TV or other browser, on the same Wi-Fi, open this address or scan the code. The media and settings load by themselves; tap <b>Run full test</b> there. Results appear here automatically.</p>
+          <div class="mono" id="lanUrl"></div>
+          <div id="qr"></div>
+          <div class="btns"><button type="button" class="small" id="resetRes">Clear all results</button></div>
+        </div>
+        <div id="srvOff" class="stack">
+          <p class="hint">To test phones, tablets and other browsers into this same report, start the test server on this computer: put <b>qa_server.py</b> in the same folder as this file, run <span class="mono">python3 qa_server.py</span> in Terminal, and open the address it prints.</p>
+          <p class="hint">Without the server, run this file on the other device, click Export there, and add the file here:</p>
+          <input id="importFile" type="file" accept=".json,application/json" multiple>
+          <div class="btns"><button type="button" class="small" id="exportBtn">Export this device's results</button><button type="button" class="small" id="resetRes2">Clear all results</button></div>
+        </div>
+        <p class="hint" id="impMsg"></p>
+      </div>
+
+      <div class="panel">
+        <form id="f" novalidate>
+          <fieldset>
+            <legend>Media</legend>
+            <label>Playback URL
+              <input id="url" type="url" placeholder="https://stream.fastpix.co/&lt;playbackId&gt;.m3u8">
+            </label>
+            <div class="btns"><button type="button" class="small" id="fetchBtn">Load playlist from URL</button><a id="openurl" class="link" href="#" target="_blank" rel="noopener" hidden>Open in a new tab</a></div>
+            <label>Master playlist text
+              <small>Filled in automatically from the URL. If loading fails, paste the playlist text or upload the .m3u8 file.</small>
+              <textarea id="m3u8" rows="6" spellcheck="false"></textarea>
+            </label>
+            <input id="m3u8file" type="file" accept=".m3u8,.txt,application/vnd.apple.mpegurl">
+            <div class="row">
+              <label>Playback ID<input id="pid"></label>
+              <label>Media ID<input id="mid"></label>
+            </div>
+          </fieldset>
+          <hr class="sep">
+          <fieldset>
+            <legend>Settings used to create the media</legend>
+            <div class="row">
+              <label>mediaQuality
+                <select id="mq"><option>custom</option><option>pro</option><option>premium</option><option>standard</option></select>
+              </label>
+              <label>codecTier
+                <select id="tier">
+                  <option value="">Not provided</option><option>basic</option><option>plus</option><option>advanced</option><option value="standard">standard (invalid)</option>
+                </select>
+              </label>
+            </div>
+            <p class="hint" id="tierhint"></p>
+            <label id="ladderwrap">Custom ladder (JSON)
+              <small>The customLadder list, or the whole settings API response.</small>
+              <textarea id="ladder" rows="6" spellcheck="false"></textarea>
+            </label>
+            <div class="row">
+              <label>Source resolution<input id="src" placeholder="3840x2160"></label>
+              <label>maxResolution
+                <select id="maxres"><option>2160p</option><option>1440p</option><option selected>1080p</option><option>720p</option><option>540p</option><option>480p</option><option>360p</option><option>270p</option><option>144p</option></select>
+              </label>
+            </div>
+            <p class="hint">maxResolution defaults to 1080p. With 1440p or 2160p and a large enough source, custom ladders get 1440p and 2160p rungs added automatically.</p>
+            <label class="check"><input id="drm" type="checkbox"> Media uses DRM (secureToken)</label>
+          </fieldset>
+          <p class="err" id="formerr" hidden></p>
+          <div class="btns">
+            <button class="primary" type="button" id="runAll">Run full test</button>
+            <button type="submit">Check manifest only</button>
+            <button type="button" id="example">Load example</button>
+            <button type="button" id="clear">Clear</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="report">
+      <div class="steps" id="steps">
+        <div class="step wait" id="st1"><span class="st">WAITING</span><b>1. Manifest</b><span id="st1t">Load the playlist and check it against the settings</span></div>
+        <div class="step wait" id="st2"><span class="st">WAITING</span><b>2. This device</b><span id="st2t">Test this device's decoder on every rendition</span></div>
+        <div class="step wait" id="st3"><span class="st">WAITING</span><b>3. Network playback</b><span id="st3t">Check the stream can be reached, then play it at each speed</span></div>
+        <div class="step wait" id="st4"><span class="st">WAITING</span><b>4. Report</b><span id="st4t">Download the PDF</span></div>
+      </div>
+      <div id="out"><div class="panel empty">Fill in the settings and run the check.</div></div>
+
+      <section id="devSec" hidden>
+        <h2>Real device test</h2>
+        <p class="sub">Asks this device's own video decoder whether it can play every rendition in the manifest, using the exact CODECS, size, frame rate and bitrate. Run this file on every phone, tablet, TV browser or computer you need to cover, then export the results there and add them on your main computer.</p>
+        <div class="btns" style="margin-bottom:8px">
+          <span class="hint">This browser: <b id="thisDev"></b></span>
+          <input id="devLabel" style="max-width:260px" placeholder="Model, optional, e.g. iPhone 15 Pro">
+          <button type="button" class="primary small" id="devRun">Test this device</button>
+          <span class="hint" id="devMsg"></span>
+        </div>
+        <div id="devOut"></div>
+      </section>
+
+      <section id="playSec" hidden>
+        <h2>Real playback by network</h2>
+        <p class="sub">Plays the stream for real in this browser with hls.js while limiting the download speed to each profile, and records the rendition and codec family the player chose, start-up time, rebuffering and errors.</p>
+        <div class="profiles" id="profiles"></div>
+        <div class="btns" style="margin-top:8px">
+          <label style="flex-direction:row;align-items:center;gap:6px">Seconds per profile <input id="secs" type="number" value="45" min="15" max="300" style="width:80px"></label>
+          <button type="button" class="primary small" id="playRun">Run playback test</button>
+          <button type="button" class="small" id="playStop" disabled>Stop</button>
+        </div>
+        <p class="status" id="status" style="margin:8px 0">Ready.</p>
+        <video id="v" muted playsinline></video>
+        <div id="playOut" style="margin-top:10px"></div>
+      </section>
+
+      <div id="tail"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const OVERHEAD=1.03, PEAK=1.75, ABR=0.7, AUDIO=128, TOL=2;
+const SIZES=[144,270,360,480,540,720,1080,1440,2160];
+const H264R={2160:[3000,30000],1440:[1400,15000],1080:[800,10000],720:[350,6000],540:[200,3500],480:[150,2500],360:[90,1500],270:[50,800],144:[30,240]};
+const H265R={2160:[1800,30000],1440:[840,15000],1080:[480,10000],720:[210,6000],540:[120,3500],480:[90,2500],360:[50,1500],270:[30,800],144:[20,240]};
+const AVC=[[10,99,1485],[11,396,3000],[12,396,6000],[13,396,11880],[20,396,11880],[21,792,19800],[22,1620,20250],[30,1620,40500],[31,3600,108000],[32,5120,216000],[40,8192,245760],[41,8192,245760],[42,8704,522240],[50,22080,589824],[51,36864,983040],[52,36864,2073600]];
+const HEVC=[[30,36864,552960],[60,122880,3686400],[63,245760,7372800],[90,552960,16588800],[93,983040,33177600],[120,2228224,66846720],[123,2228224,133693440],[150,8912896,267386880],[153,8912896,534773760],[156,8912896,1069547520],[180,35651584,1069547520]];
+const NETS=[["2G / EDGE",250],["Slow 3G",500],["3G (1 Mbps)",1000],["Fast 3G",1600],["4G LTE, weak",3000],["4G LTE",6000],["4G+ / Wi-Fi",10000],["Broadband 25 Mbps",25000],["Fibre 50 Mbps+",50000]];
+const KNOWN_AVC=new Set(["854x480","480x270"]);
+const KNOWN_ISSUES=["H.264 CODECS at 480p and 270p: the master says level 3.0 / 2.2; streams are 3.1 / 2.1. Production is the same; a fix is planned.",
+ "codecTier \"advanced\" (AV1) fails: AV1 is not built yet. H.265 with DRM is refused.",
+ "Android Media3 may play H.264 on phones that decode H.265, unless the app prefers H.265.",
+ "Custom h265Bitrate maximum equals the H.264 maximum for now.",
+ "Very low custom H.265 rates on noise-like video can run about 1% over BANDWIDTH."];
+const LS_KEY='fastpix-stream-qa:v1';
+const OWNER={manifest:"Manifest / transcode",ingest:"Ingest validation",player:"Player / delivery"};
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const r0=n=>Math.round(n).toLocaleString("en-IN");
+const n0=v=>v==null?"–":r0(v);
+const pill=s=>`<span class="pill ${s}">${s}</span>`;
+
+/* ---------- manifest analysis ---------- */
+function parseVariants(text){
+  const out=[];
+  text.split(/\r?\n/).forEach(line=>{
+    if(!line.startsWith("#EXT-X-STREAM-INF:"))return;
+    const a={}; for(const m of line.slice(18).matchAll(/([A-Z0-9-]+)=("[^"]*"|[^,]*)/g))a[m[1]]=m[2].replace(/^"|"$/g,"");
+    if(!a.RESOLUTION||!a.BANDWIDTH)return;
+    const [w,h]=a.RESOLUTION.split("x").map(Number);
+    const vc=(a.CODECS||"").split(",").map(c=>c.trim()).find(c=>/^(avc1|hvc1|hev1)/.test(c))||"";
+    out.push({order:out.length,family:/^(hvc1|hev1)/.test(vc)?"H.265":"H.264",vc,w,h,size:Math.min(w,h),res:`${w}x${h}`,
+      bw:+a.BANDWIDTH/1000,avg:a["AVERAGE-BANDWIDTH"]?+a["AVERAGE-BANDWIDTH"]/1000:null,fps:parseFloat(a["FRAME-RATE"])||30});
+  });
+  return out;
+}
+function advLevel(vc){ if(vc.startsWith("avc1")&&vc.length>=11)return parseInt(vc.slice(9,11),16); const m=vc.match(/\.L(\d+)/); return m?+m[1]:null; }
+function reqLevel(f,w,h,fps){
+  if(f==="H.264"){const fs=Math.ceil(w/16)*Math.ceil(h/16); for(const [l,mfs,mb] of AVC) if(fs<=mfs&&fs*fps<=mb)return l;}
+  else{const ps=w*h; for(const [l,mp,ms] of HEVC) if(ps<=mp&&ps*fps<=ms)return l;}
+  return null;
+}
+const fmtL=(f,l)=>l==null?"?":f==="H.264"?`${Math.floor(l/10)}.${l%10}`:String(+(l/30).toFixed(1));
+const sz=r=>parseInt(String(r.resolution));
+
+function validateCustom(L,plus){
+  if(!Array.isArray(L)||!L.length)return "customLadder must be a non-empty list of {resolution, bitrate}";
+  const names=L.map(r=>String(r.resolution));
+  for(const n of names) if(!/^\d+p$/.test(n)||!SIZES.includes(parseInt(n))) return `resolution '${n}' is not one of 2160p, 1440p, 1080p, 720p, 540p, 480p, 360p, 270p, 144p`;
+  for(const r of L){const s=sz(r);
+    if(typeof r.bitrate!=="number")return `${s}p bitrate '${r.bitrate}' is not a number of kbps`;
+    let [lo,hi]=H264R[s]; if(r.bitrate<lo||r.bitrate>hi)return `${s}p bitrate ${r.bitrate} kbps is outside ${lo}-${hi} kbps`;
+    if(plus){ if(r.h265Bitrate==null)return `${s}p has no h265Bitrate; with codecTier "plus" every rung needs one`;
+      [lo,hi]=H265R[s]; if(typeof r.h265Bitrate!=="number"||r.h265Bitrate<lo||r.h265Bitrate>hi)return `${s}p h265Bitrate ${r.h265Bitrate} kbps is outside ${lo}-${hi} kbps`;}
+  }
+  for(const n of new Set(names)){const c=names.filter(x=>x===n).length; if(c>(n==="1080p"?2:1))return `${n} appears ${c} times`;}
+  const miss=["480p","720p","1080p"].filter(s=>!names.includes(s)); if(miss.length)return `customLadder must include 480p, 720p, 1080p; missing ${miss.join(", ")}`;
+  const R=[...L].sort((a,b)=>sz(a)-sz(b)||a.bitrate-b.bitrate);
+  for(const k of plus?["bitrate","h265Bitrate"]:["bitrate"]) for(let i=1;i<R.length;i++){const a=R[i-1],b=R[i];
+    if(a.resolution!==b.resolution&&b[k]<=a[k])return `${k==="bitrate"?"bitrates":"h265Bitrate values"} must rise with resolution: ${b.resolution} at ${b[k]} kbps is not above ${a.resolution} at ${a[k]} kbps`;}
+  const p=R.filter(r=>r.resolution==="1080p");
+  if(p.length===2&&p[1].bitrate<1.25*p[0].bitrate)return `the two 1080p rungs (${p[0].bitrate} and ${p[1].bitrate} kbps) must be at least 1.25x apart`;
+  if(p.length===2&&plus&&p[1].h265Bitrate<=p[0].h265Bitrate)return "h265Bitrate values must rise with resolution: the higher H.264 1080p must be the higher H.265 one";
+  return null;
+}
+function expectedCustom(L,plus,cap){
+  const fams=plus?["H.264","H.265"]:["H.264"], key={"H.264":"bitrate","H.265":"h265Bitrate"}, exp={}, notes=[];
+  for(const f of fams){
+    let e=L.map(r=>({s:sz(r),b:+r[key[f]],o:"customer"}));
+    if(!e.some(x=>x.s===270)){const b480=Math.min(...e.filter(x=>x.s===480).map(x=>x.b)); let v=Math.min(100,b480/2); if(f==="H.265")v=Math.max(v,30);
+      e.push({s:270,b:v,o:"auto-added 270p"}); notes.push(`${f}: 270p auto-added at ${v} kbps (lower of 100 kbps and half the 480p).`);}
+    const dropped=[...new Set(e.filter(x=>x.s>cap).map(x=>x.s+"p"))]; if(dropped.length)notes.push(`${f}: ${dropped.join(", ")} dropped (above source / maxResolution ${cap}p).`);
+    exp[f]=e.filter(x=>x.s<=cap).sort((a,b)=>a.s-b.s||a.b-b.b);
+  }
+  for(const [step,mult] of [[1440,1.875],[2160,2]]){
+    if(step>cap||fams.some(f=>exp[f].some(x=>x.s>=step)))continue;
+    const prev=step===1440?1080:1440, cand={}; let ok=true;
+    for(const f of fams){const tops=exp[f].filter(x=>x.s===prev).map(x=>x.b); if(!tops.length){ok=false;break;}
+      const top=Math.max(...tops); let v=Math.min(top*mult,(f==="H.264"?H264R:H265R)[step][1]); if(f==="H.265"&&step===2160)v=Math.min(v,14000);
+      if(v<1.25*top){ok=false;notes.push(`${step}p not added: ${f} would be ${v} kbps, under 1.25x ${top}.`);break;} cand[f]=v;}
+    if(!ok)break;
+    fams.forEach(f=>exp[f].push({s:step,b:cand[f],o:`auto-added ${step}p`}));
+    notes.push(`${step}p auto-added: ${fams.map(f=>`${f} ${cand[f]} kbps`).join(", ")}. If the source's own bitrate is lower, the rung is capped at it and will show as a mismatch here.`);
+  }
+  return {exp,notes};
+}
+function calcPick(V,family,kbps){const fam=V.filter(v=>v.family===family).sort((a,b)=>a.bw-b.bw); if(!fam.length)return null; const ok=fam.filter(v=>v.bw<=kbps*ABR); return (ok.length?ok:fam.slice(0,1)).at(-1);}
+
+function expectedDevices(has265,top){
+  const h=(y,n)=>has265?y:n;
+  const rows=[
+   ["Safari on macOS, iOS, iPadOS (T23)",h("H.265 (_h265 folders)","H.264")],
+   ["Chrome desktop, FastPix player (T24)",h("H.265 with hardware HEVC, else H.264","H.264")],
+   ["Edge on Windows",h("H.265 with hardware HEVC, else H.264","H.264")],
+   ["Firefox (T25)","H.264"],
+   ["Android app, Media3 (T26)",h("H.264; H.265 only if the app prefers it","H.264")],
+   ["Smart TV, Roku, third-party (T27)","H.264 (usually)"]];
+  if(top>=2160)rows.push(["4K TVs, Apple TV 4K",h("H.265 2160p","H.264 2160p (needs level 5.1+)")]);
+  return rows;
+}
+
+/* checks: [status, area, detail, severity, owner, fix] */
+function run(inp){
+  const V=parseVariants(inp.text), checks=[];
+  const add=(s,a,d,sev,own,fix)=>checks.push({s,a,d,sev:s==="PASS"?null:sev,own,fix});
+  const mq=inp.mq, raw=inp.tier, tier=(raw||"").trim().toLowerCase()||"basic", read=["pro","premium","custom"].includes(mq);
+  const tierEff=read?tier+(raw?"":" (default, none provided)"):"not read (standard media is H.264 only)";
+  const plus=read&&tier==="plus";
+  const ctx={mq,tierEff,V,notes:[],rows:[],levels:[],net:[],fams:[],expFail:null};
+  if(read&&!["basic","plus","advanced"].includes(tier))ctx.expFail=`Invalid codecTier: codecTier '${tier}' is not one of basic, plus, advanced`;
+  else if(read&&tier==="advanced")ctx.expFail='Invalid codecTier: codecTier "advanced" is not available yet';
+  else if(plus&&inp.drm)ctx.expFail='Invalid codecTier: codecTier "plus" is not available with DRM yet';
+  let L=null;
+  if(mq==="custom"&&!ctx.expFail){
+    L=inp.ladder; if(L&&!Array.isArray(L)){const d=L.data||L; L=(d.customMediaQuality||d).customLadder??d.customLadder;}
+    const e=validateCustom(L,plus); if(e)ctx.expFail="Invalid customLadder: "+e;
+  }
+  if(ctx.expFail){
+    add(V.length?"FAIL":"PASS","Media status",`The guide says this media must fail with "${ctx.expFail}". `+(V.length?"A playable manifest exists, so the request was not refused.":"No variants found, which is consistent."),
+      "Critical",OWNER.ingest,"Reject the request with the exact message from the guide instead of encoding it.");
+    return {checks,ctx};
+  }
+  if(!V.length){add("FAIL","Master playlist","No #EXT-X-STREAM-INF variants found. Paste the master playlist, not a rendition playlist.","Critical",OWNER.manifest,"Check that the master playlist was pasted in full.");return {checks,ctx};}
+
+  const present=[...new Set(V.map(v=>v.family))].sort(), want=plus?["H.264","H.265"]:["H.264"];
+  ctx.fams=present; ctx.want=want;
+  let src; if(inp.src){const p=inp.src.toLowerCase().split("x").map(Number); src=Math.min(...p);} else {src=Math.max(...V.map(v=>v.size)); ctx.notes.push(`Source size not given; assumed ${src}p from the largest rendition. Enter it to check added and dropped rungs properly.`);}
+  const cap=Math.min(src,parseInt(inp.maxres)); ctx.cap=cap;
+
+  const famOk=present.join()===want.join();
+  add(famOk?"PASS":"FAIL","Codec families",famOk?`${present.join(" + ")} present, as expected for ${mq} with codecTier ${tier}`:`Expected ${want.join(" + ")}; the manifest has ${present.join(" + ")}`,
+    "Critical",OWNER.manifest,want.includes("H.265")?"Encode the H.265 set when codecTier is plus.":"Do not output H.265 unless codecTier is plus on pro, premium or custom.");
+  if(present.includes("H.265")){
+    const last=Math.max(-1,...V.filter(v=>v.family==="H.264").map(v=>v.order)), first=Math.min(...V.filter(v=>v.family==="H.265").map(v=>v.order));
+    add(last<first?"PASS":"WARN","Variant order",last<first?"Every H.264 variant is listed before every H.265 one":"H.264 and H.265 variants are interleaved; the guide expects every H.264 variant first.","Medium",OWNER.manifest,"List all H.264 variants before the H.265 set.");
+    if(V[0].family!=="H.264")add("FAIL","First variant","The first variant is H.265. Players that ignore CODECS start on it and fail on devices without HEVC.","Critical",OWNER.manifest,"Make the first variant H.264.");
+    const a=V.filter(v=>v.family==="H.264").map(v=>v.res).sort().join(), b=V.filter(v=>v.family==="H.265").map(v=>v.res).sort().join();
+    add(a===b?"PASS":"FAIL","Same sizes in both families",a===b?"Both families list the same RESOLUTION values":`H.264: ${a} / H.265: ${b}`,"High",OWNER.manifest,"Encode H.265 at exactly the H.264 sizes.");
+  }
+  const bad=V.filter(v=>!SIZES.includes(v.size)).map(v=>v.res); if(bad.length)add("FAIL","Allowed sizes",`Unsupported sizes: ${bad.join(", ")}`,"High",OWNER.manifest,"Only output the nine supported sizes.");
+  const over=V.filter(v=>v.size>cap).map(v=>v.res);
+  add(over.length?"FAIL":"PASS","No upscaling, maxResolution respected",over.length?`Renditions above ${cap}p: ${over.join(", ")}`:`No rendition above ${cap}p`,"Critical",OWNER.manifest,"Drop rungs larger than the source or maxResolution.");
+  const ba=V.filter(v=>v.avg&&v.avg>v.bw).map(v=>`${v.family} ${v.res}`);
+  add(ba.length?"FAIL":"PASS","AVERAGE-BANDWIDTH never above BANDWIDTH",ba.length?ba.join(", "):"Holds for every variant","High",OWNER.manifest,"Fix the AVERAGE-BANDWIDTH calculation.");
+
+  const byFam=f=>V.filter(v=>v.family===f).sort((a,b)=>a.size-b.size||a.bw-b.bw);
+  if(mq==="custom"){
+    const {exp,notes}=expectedCustom(L,plus,cap); ctx.notes.push(...notes);
+    for(const f of want){
+      const got=byFam(f), sizes=[...new Set(exp[f].map(x=>x.s))];
+      for(const s of sizes){
+        const ex=exp[f].filter(x=>x.s===s), have=got.filter(v=>v.size===s);
+        if(have.length!==ex.length)add("FAIL",`${f} ${s}p rungs`,`Expected ${ex.length}, the manifest has ${have.length}`,"Critical",OWNER.manifest,`Output ${ex.length} × ${s}p in ${f} as the ladder rules require.`);
+        ex.forEach((e,i)=>{const v=have[i]; if(!v)return;
+          const eBw=OVERHEAD*(PEAK*e.b+AUDIO), eAvg=OVERHEAD*(e.b+AUDIO), vBw=(v.bw/OVERHEAD-AUDIO)/PEAK, vAvg=v.avg!=null?v.avg/OVERHEAD-AUDIO:null;
+          const dev=Math.max(Math.abs(vBw-e.b),vAvg==null?0:Math.abs(vAvg-e.b))/e.b*100, st=dev<=TOL?"PASS":"FAIL";
+          ctx.rows.push([f,v.res,e.b,e.o,eBw,v.bw,eAvg,v.avg,vAvg,st]);
+          if(st==="FAIL")add("FAIL",`${f} ${v.res} bitrate`,`Configured ${e.b} kbps; the manifest implies ${r0(vBw)} kbps from BANDWIDTH${vAvg!=null?` and ${r0(vAvg)} kbps from AVERAGE-BANDWIDTH`:""}`,"Critical",OWNER.manifest,`Encode ${f} ${s}p at ${e.b} kbps and advertise BANDWIDTH ${r0(eBw*1000)}.`);
+        });
+      }
+      const extra=got.filter(v=>!sizes.includes(v.size)).map(v=>v.res); if(extra.length)add("FAIL",`${f} extra rungs`,`Not in the expected ladder: ${extra.join(", ")}`,"High",OWNER.manifest,"Only output the customer's rungs plus the rule-based additions.");
+    }
+    const n=ctx.rows.length, nf=ctx.rows.filter(r=>r[9]==="FAIL").length;
+    add(nf?"FAIL":"PASS","Bitrates match the custom ladder",`${n-nf} of ${n} rungs match within ${TOL}% (BANDWIDTH = (bitrate × 1.75 + ${AUDIO} audio) × 1.03)`,"Critical",OWNER.manifest,"See the rung rows above.");
+    if(plus){const a=byFam("H.264"),b=byFam("H.265"); const nb=a.filter((x,i)=>b[i]&&!(b[i].bw<x.bw)).map(x=>x.res);
+      add(nb.length?"FAIL":"PASS","H.265 BANDWIDTH below its H.264 twin (T13)",nb.length?`Not below at ${nb.join(", ")}`:"Every H.265 rung is below its H.264 twin","High",OWNER.manifest,"H.265 rungs must use the customer's h265Bitrate.");}
+  } else {
+    for(const f of present) for(const v of byFam(f)) ctx.rows.push([f,v.res,null,mq+" auto ladder",null,v.bw,null,v.avg,v.avg!=null?v.avg/OVERHEAD-AUDIO:null,"INFO"]);
+    if(mq==="pro"){const w=[270,480,720,1080].filter(s=>s<=cap), h=[...new Set(byFam("H.264").map(v=>v.size))].filter(s=>s<=1080);
+      add(w.join()===h.join()?"PASS":"WARN","Pro rung sizes up to 1080p",`Expected ${w.map(s=>s+"p").join(", ")}; H.264 has ${h.map(s=>s+"p").join(", ")}`,"Medium",OWNER.manifest,"Confirm the pro ladder sizes with engineering.");
+      const above=[...new Set(byFam("H.264").map(v=>v.size))].filter(s=>s>1080); if(above.length)add("INFO","Pro rungs above 1080p",`Present: ${above.map(s=>s+"p").join(", ")} (allowed by maxResolution ${inp.maxres})`);}
+    if(mq==="premium"&&cap>=1080){const n=byFam("H.264").filter(v=>v.size===1080).length; add(n===2?"PASS":"FAIL","Premium has two 1080p rungs",`H.264 has ${n} × 1080p`,"High",OWNER.manifest,"Premium must output two 1080p rungs in each family.");}
+    if(plus){const a=byFam("H.264"),b=byFam("H.265"); const ne=a.filter((x,i)=>!b[i]||Math.abs(x.bw-b[i].bw)>1).map(x=>x.res);
+      add(ne.length||a.length!==b.length?"FAIL":"PASS","H.265 BANDWIDTH equals its H.264 twin (T05/T06)",ne.length?`Differs at ${ne.join(", ")}`:"Equal at every size","High",OWNER.manifest,"Advertise the same BANDWIDTH for each H.265 rung as its H.264 twin.");}
+  }
+
+  for(const v of V){const adv=advLevel(v.vc), req=reqLevel(v.family,v.w,v.h,v.fps);
+    const st=v.family==="H.265"?(adv===req?"PASS":"FAIL"):(adv!=null&&req!=null&&adv>=req?"PASS":"WARN");
+    const known=st==="WARN"&&KNOWN_AVC.has(v.res);
+    const note=st==="WARN"?(known?"Known issue in the guide, not a regression":"Under-advertised and not in the guide's known issues"):st==="FAIL"?"H.265 level must match the size and frame rate":"";
+    ctx.levels.push([v.family,v.res,v.fps,v.vc,fmtL(v.family,adv),fmtL(v.family,req),st,note]);
+    if(st!=="PASS")add(st,`${v.family} ${v.res} CODECS level`,`Advertises level ${fmtL(v.family,adv)}; ${v.res} at ${v.fps} fps needs ${fmtL(v.family,req)}. ${note}.`,
+      known?"Known":st==="FAIL"?"High":"Medium",OWNER.manifest,`Advertise level ${fmtL(v.family,req)} in CODECS for this rendition.`);
+  }
+  if(ctx.levels.every(r=>r[6]==="PASS"))add("PASS","CODECS levels","Every variant advertises the level its size and frame rate need");
+
+  for(const [name,k] of NETS) ctx.net.push([name,k,...present.map(f=>calcPick(V,f,k))]);
+  ctx.expDevices=expectedDevices(present.includes("H.265"),Math.max(...V.map(v=>v.size)));
+  return {checks,ctx};
+}
+
+/* ---------- device test ---------- */
+function guessDevice(){
+  const u=navigator.userAgent; let os=/iPhone/.test(u)?"iPhone":/iPad/.test(u)?"iPad":/Android/.test(u)?"Android":/Mac OS X/.test(u)?"Mac":/Windows/.test(u)?"Windows":/CrOS/.test(u)?"ChromeOS":/Linux/.test(u)?"Linux":"Device";
+  let br=/Claude/i.test(u)?"Claude app":/Edg\//.test(u)?"Edge":/Firefox|FxiOS/.test(u)?"Firefox":/Chrome|CriOS/.test(u)?"Chrome":/Safari/.test(u)?"Safari":"Browser";
+  return `${os}, ${br}`;
+}
+const isApple=()=>/iPhone|iPad|Mac OS X/.test(navigator.userAgent)&&!/Chrome|CriOS|Firefox|FxiOS|Edg/.test(navigator.userAgent);
+async function testDevice(V){
+  const mse=window.ManagedMediaSource||window.MediaSource, vid=document.createElement("video");
+  const native=vid.canPlayType("application/vnd.apple.mpegurl")||"";
+  const results=[];
+  for(const v of V){const ct=`video/mp4; codecs="${v.vc}"`; let mc=null;
+    try{ if(navigator.mediaCapabilities) mc=await navigator.mediaCapabilities.decodingInfo({type:"media-source",video:{contentType:ct,width:v.w,height:v.h,bitrate:Math.round(v.bw*1000),framerate:v.fps}}); }catch(e){}
+    let mseOk=false; try{mseOk=!!(mse&&mse.isTypeSupported(ct));}catch(e){}
+    results.push({family:v.family,res:v.res,fps:v.fps,vc:v.vc,supported:mc?mc.supported:mseOk,smooth:mc?mc.smooth:null,power:mc?mc.powerEfficient:null,mse:mseOk});
+  }
+  const sum=f=>{const r=results.filter(x=>x.family===f); return r.length?{all:r.every(x=>x.supported),some:r.some(x=>x.supported),smooth:r.every(x=>x.smooth!==false),failed:r.filter(x=>!x.supported).map(x=>x.res)}:null;};
+  return {label:$("devLabel").value.trim()||guessDevice(),ua:navigator.userAgent,apple:isApple(),nativeHls:native,at:new Date().toISOString(),results,h264:sum("H.264"),h265:sum("H.265")};
+}
+const TARGETS=["Mac, Safari","Mac, Chrome","Windows, Chrome","Windows, Edge","Firefox (desktop)","iPhone / iPad","Android phone","Smart TV / set-top"];
+let REQUIRED=new Set(["Mac, Safari","Mac, Chrome","Windows, Chrome","Firefox (desktop)","iPhone / iPad","Android phone"]);
+const missingTargets=()=>{const c=new Set(DEVICES.map(d=>d.category||categoryOf(d.ua)));return TARGETS.filter(t=>REQUIRED.has(t)&&!c.has(t));};
+function howTo(t){
+  const here=SERVER?location.origin+"/":"this page's address";
+  const lan=SERVER&&SERVER.lan&&SERVER.lan[0]?SERVER.lan[0]:null;
+  if(/^Mac|^Windows|^Firefox/.test(t)){const mine=categoryOf(navigator.userAgent);const os=t.split(",")[0];
+    return (mine.startsWith(os)||t.startsWith("Firefox"))?`open ${here} in that browser on a computer and click Run full test.`:`on a ${os} computer${lan?` on the same Wi-Fi, open ${lan}`:", open this file"} and click Run full test.`;}
+  return lan?`on the device, on the same Wi-Fi, open ${lan} (or scan the code) and tap Run full test.`:"start qa_server.py on this computer, then open the address it prints on the device.";
+}
+function categoryOf(u){u=u||"";
+  if(/SMART-TV|SmartTV|Tizen|Web0S|webOS|Roku|AFT|CrKey|BRAVIA/i.test(u))return "Smart TV / set-top";
+  if(/iPhone|iPad/.test(u)||(/Macintosh/.test(u)&&/Mobile\//.test(u)))return "iPhone / iPad";
+  if(/Android/.test(u))return "Android phone";
+  if(/Firefox/.test(u))return "Firefox (desktop)";
+  if(/Windows/.test(u))return /Edg\//.test(u)?"Windows, Edge":"Windows, Chrome";
+  if(/Mac OS X/.test(u))return /Chrome|Edg\//.test(u)?"Mac, Chrome":"Mac, Safari";
+  return "Other";}
+function playsFamily(d){ if(d.h265&&d.h265.all)return "H.265"; if(d.h264&&d.h264.all)return "H.264"; return "none"; }
+
+/* ---------- issues ---------- */
+function collectIssues(res,devices,plays){
+  const out=[];
+  for(const c of res.checks) if(c.s!=="PASS"&&c.s!=="INFO"&&c.sev&&c.sev!=="Known") out.push({sev:c.sev,title:c.a,evidence:c.d,fix:c.fix,owner:c.own});
+  const V=res.ctx.V;
+  for(const d of devices){
+    if(d.h264&&!d.h264.all)out.push({sev:"Critical",title:`${d.label}: cannot decode H.264 ${d.h264.failed.join(", ")}`,evidence:`The device's decoder rejected these H.264 renditions. Every device must be able to play the H.264 set.`,fix:"Check the profile and level of these renditions.",owner:OWNER.manifest});
+    else if(d.h264&&!d.h264.smooth)out.push({sev:"Medium",title:`${d.label}: H.264 not smooth at some sizes`,evidence:d.results.filter(x=>x.family==="H.264"&&x.smooth===false).map(x=>x.res).join(", ")+" reported as not smooth by the device.",fix:"Review bitrate and frame rate for those rungs.",owner:OWNER.manifest});
+    if(d.h265&&d.apple&&!d.h265.all)out.push({sev:"High",title:`${d.label}: H.265 rejected on an Apple device`,evidence:`Safari is expected to play H.265 (T23), but these renditions were rejected: ${d.h265.failed.join(", ")}.`,fix:"Check the hvc1 CODECS strings and levels.",owner:OWNER.manifest});
+  }
+  for(const p of plays){
+    if(p.setup&&!p.setup.ok)continue;            // test couldn't reach the stream: reported separately, not a FastPix bug
+    const R=p.results||[], names=rs=>rs.map(r=>r.profile).join(", ");
+    const failed=R.filter(r=>!r.started||r.fatal);
+    if(failed.length){const errs=[...new Set(failed.flatMap(r=>r.errors||[]))].slice(0,4).join(", ");
+      out.push({sev:"Critical",title:`${p.label}: playback failed on ${failed.length} of ${R.length} network profiles`,evidence:`Profiles: ${names(failed)}. ${failed.some(r=>!r.started)?"Playback never started.":"Playback stopped."} ${errs?"Errors: "+errs+".":""}`,fix:"Reproduce with the HAR log and the master playlist.",owner:OWNER.player});}
+    const ok=R.filter(r=>r.started&&!r.fatal);
+    const sw=ok.filter(r=>r.schedule&&r.familiesPlayed&&r.familiesPlayed.length>1);
+    if(sw.length)out.push({sev:"High",title:`${p.label}: player changed codec family during the step test`,evidence:`Families played: ${sw[0].familiesPlayed.join(" and ")}. The guide requires switches within one family (T29).`,fix:"Check the CODECS of each family and the player's codec selection.",owner:OWNER.player});
+    const rb=ok.filter(r=>{const fam=r.endedOn&&r.endedOn.family, low=fam?V.filter(v=>v.family===fam).sort((a,b)=>a.bw-b.bw)[0]:null; return r.kbps&&r.rebuffers>0&&low&&low.bw<=r.kbps*ABR;});
+    if(rb.length)out.push({sev:"High",title:`${p.label}: rebuffering on ${rb.length} profile${rb.length>1?"s":""} where a rendition fits`,evidence:rb.map(r=>`${r.profile}: ${r.rebuffers}× (${(r.rebufferMs/1000).toFixed(1)} s)`).join("; ")+".",fix:"Check segment sizes against BANDWIDTH and the ABR start level.",owner:OWNER.player});
+    const hi=ok.filter(r=>r.kbps&&r.endedOn&&r.endedOn.bwKbps>r.kbps&&(r.levels||[]).some(l=>l.family===r.endedOn.family&&l.bwKbps<=r.kbps));
+    if(hi.length)out.push({sev:"Medium",title:`${p.label}: settled above the connection speed`,evidence:hi.map(r=>`${r.profile}: ended on ${r.endedOn.res} (${(r.endedOn.bwKbps/1000).toFixed(2)} Mbps)`).join("; ")+".",fix:"Check that BANDWIDTH reflects the real peak segment bitrate.",owner:OWNER.manifest});
+  }
+  const rank={Critical:0,High:1,Medium:2}; return out.sort((a,b)=>rank[a.sev]-rank[b.sev]);
+}
+
+/* ---------- state + render ---------- */
+let CUR=null; // {res, inp}
+let DEVICES=[], PLAYS=[];  // shown for current run
+
+
+function summary(){
+  const issues=collectIssues(CUR.res,DEVICES,PLAYS), {checks}=CUR.res;
+  const fails=checks.filter(c=>c.s==="FAIL").length, warns=checks.filter(c=>c.s==="WARN").length, passes=checks.filter(c=>c.s==="PASS").length;
+  const blocking=issues.filter(i=>i.sev!=="Medium").length;
+  const setup=PLAYS.filter(p=>p.setup&&!p.setup.ok);
+  const missing=missingTargets();
+  return {issues,fails,warns,passes,setup,missing,verdict:(fails||blocking)?"FAIL":(setup.length||missing.length)?"INCOMPLETE":"PASS"};
+}
+function renderAll(){
+  if(!CUR)return;
+  const {res,inp}=CUR, {checks,ctx}=res, S=summary();
+  let h=`<div class="verdict"><span class="big ${S.verdict}">${S.verdict}</span>
+    <div class="meta"><span><b>${S.issues.length}</b> issues to fix</span><span><b>${S.passes}</b> checks passed</span><span><b>${S.fails}</b> failed</span><span><b>${S.warns}</b> warnings</span>
+    <span>mediaQuality <b>${esc(ctx.mq)}</b></span><span>codecTier <b>${esc(ctx.tierEff)}</b></span><span>maxResolution <b>${esc(inp.maxres)}</b></span></div>
+    <span class="spacer"></span>${inp.example?'<span class="example">Example data, not a real media</span>':""}
+    <button class="primary" id="pdf" type="button">Download PDF report</button></div><p class="err" id="pdferr" hidden></p>`;
+  if(S.missing.length)h+=`<div class="setup"><h2>Devices still to test (${S.missing.length})</h2><p style="margin:4px 0">${S.missing.map(esc).join(", ")}</p><p class="hint">Marked as needed under Real device test but not tested yet.</p></div>`;
+  if(S.setup.length)h+=`<div class="setup"><h2>The playback test could not run</h2>${S.setup.map(p=>`<p style="margin:4px 0"><b>${esc(p.label)}</b>: ${esc(p.setup.message)}</p>`).join("")}<p class="hint" style="margin-top:6px">This is a test setup problem, not a FastPix bug, so it is not counted in the issues below.</p></div>`;
+  h+=`<div class="issues ${S.issues.length?"":"clean"}"><div class="head"><h2>${S.issues.length?`Issues to fix (${S.issues.length})`:"No issues to fix"}</h2>
+    <span>${S.issues.length?`${S.issues.filter(i=>i.sev==="Critical").length} critical, ${S.issues.filter(i=>i.sev==="High").length} high, ${S.issues.filter(i=>i.sev==="Medium").length} medium. Known issues from the guide are listed at the bottom, not here.`:"Every check, device test and playback result so far is clean."}</span></div>
+    ${S.issues.map(i=>`<div class="issue"><div>${pill(i.sev)}</div><div><div class="t">${esc(i.title)}</div><dl><dt>Found</dt><dd>${esc(i.evidence)}</dd><dt>Fix</dt><dd>${esc(i.fix)}</dd><dt>Area</dt><dd>${esc(i.owner)}</dd></dl></div></div>`).join("")}</div>`;
+  if(ctx.expFail)h+=`<div class="panel"><b>Expected ingest failure:</b> <span style="font-family:var(--mono);font-size:12.5px">${esc(ctx.expFail)}</span></div>`;
+  h+=`<section><h2>Manifest checks</h2><div class="tbl"><table><thead><tr><th>Result</th><th>Check</th><th>Detail</th></tr></thead><tbody>${checks.map(c=>`<tr><td>${pill(c.s)}</td><td>${esc(c.a)}</td><td>${esc(c.d)}</td></tr>`).join("")}</tbody></table></div>
+    ${ctx.notes.length?`<ul class="notes">${ctx.notes.map(n=>`<li>${esc(n)}</li>`).join("")}</ul>`:""}</section>`;
+  if(ctx.rows.length)h+=`<section><h2>Rendition ladder</h2><p class="sub">All values in kbps. Expected BANDWIDTH = (bitrate × 1.75 + 128 audio) × 1.03 and expected AVERAGE-BANDWIDTH = (bitrate + 128 audio) × 1.03. Implied video is the video bitrate worked back from AVERAGE-BANDWIDTH. A rung passes within 2%.</p>
+    <div class="tbl"><table><thead><tr><th>Codec</th><th>Resolution</th><th>Configured</th><th>Origin</th><th>Exp. BANDWIDTH</th><th>BANDWIDTH</th><th>Exp. Avg</th><th>Avg</th><th>Implied video</th><th>Result</th></tr></thead><tbody>
+    ${ctx.rows.map(r=>`<tr><td>${r[0]}</td><td class="mono">${r[1]}</td><td class="num">${n0(r[2])}</td><td>${esc(r[3])}</td><td class="num">${n0(r[4])}</td><td class="num">${n0(r[5])}</td><td class="num">${n0(r[6])}</td><td class="num">${n0(r[7])}</td><td class="num">${n0(r[8])}</td><td>${pill(r[9])}</td></tr>`).join("")}</tbody></table></div></section>`;
+  if(ctx.levels.length)h+=`<section><h2>CODECS levels</h2><p class="sub">Advertised is the decoder level the manifest claims; needed is the minimum the H.264 or H.265 standard requires for that size and frame rate.</p>
+    <div class="tbl"><table><thead><tr><th>Codec</th><th>Resolution</th><th>FPS</th><th>CODECS</th><th>Advertised</th><th>Needed</th><th>Result</th><th>Note</th></tr></thead><tbody>
+    ${ctx.levels.map(r=>`<tr><td>${r[0]}</td><td class="mono">${r[1]}</td><td class="num">${r[2]}</td><td class="mono">${esc(r[3])}</td><td class="num">${r[4]}</td><td class="num">${r[5]}</td><td>${pill(r[6])}</td><td>${esc(r[7])}</td></tr>`).join("")}</tbody></table></div></section>`;
+  $("out").innerHTML=h;
+  $("pdf").addEventListener("click",makePdf);
+
+  // device results
+  const V=ctx.V;
+  $("devSec").hidden=!V.length; $("playSec").hidden=!V.length;
+  const covered=new Set(DEVICES.map(d=>d.category||categoryOf(d.ua)));
+  const covHtml=`<p class="sub" style="margin:4px 0">Devices to cover. Click to mark the ones this test needs; tested ones turn green.</p><div class="cov">${TARGETS.map(t=>`<button type="button" data-t="${esc(t)}" class="${covered.has(t)?"y":REQUIRED.has(t)?"req":""}">${covered.has(t)?"✓ ":REQUIRED.has(t)?"● ":""}${t}</button>`).join("")}</div>`+
+    (missingTargets().length?`<ul class="howto">${missingTargets().map(t=>`<li><b>${esc(t)}</b>: ${howTo(t)}</li>`).join("")}</ul>`:"");
+  $("devOut").innerHTML=covHtml+(DEVICES.length?`<div class="tbl"><table><thead><tr><th>Device</th><th>Tested</th><th>H.264</th><th>H.265</th><th>Would play</th><th>Native HLS</th><th>Not decodable</th></tr></thead><tbody>${DEVICES.map(d=>{
+      const c=s=>!s?"–":s.all?`<span class="yes">All rungs</span>${s.smooth?"":" (some not smooth)"}`:s.some?`<span class="no">Partly</span>`:`<span class="no">No</span>`;
+      const bad=d.results.filter(x=>!x.supported).map(x=>`${x.family} ${x.res}`);
+      return `<tr><td><b>${esc(d.label)}</b><br><span class="hint">${esc(d.ua).slice(0,90)}</span></td><td>${new Date(d.at).toLocaleString("en-IN",{dateStyle:"medium",timeStyle:"short"})}</td><td>${c(d.h264)}</td><td>${c(d.h265)}</td><td><b>${playsFamily(d)}</b></td><td>${d.nativeHls?"yes":"no"}</td><td>${bad.length?esc(bad.join(", ")):"none"}</td></tr>`;}).join("")}</tbody></table></div>`
+    :`<p class="hint">No devices tested yet for this run.</p>`);
+  $("devOut").querySelectorAll(".cov button").forEach(b=>b.addEventListener("click",()=>{const t=b.dataset.t;REQUIRED.has(t)?REQUIRED.delete(t):REQUIRED.add(t);renderAll();save();}));
+  $("devOut").insertAdjacentHTML("beforeend",`<h3>Expected per the guide</h3><div class="tbl"><table><thead><tr><th>Device or player</th><th>Expected family</th></tr></thead><tbody>${ctx.expDevices.map(r=>`<tr><td>${r[0]}</td><td>${r[1]}</td></tr>`).join("")}</tbody></table></div>`);
+
+  // playback results
+  let p="";
+  for(const run of PLAYS){
+    p+=`<h3>${esc(run.label)} <span class="hint">· hls.js ${esc(run.env&&run.env.hls)} · ${new Date(run.at).toLocaleString("en-IN",{dateStyle:"medium",timeStyle:"short"})}</span></h3>
+    <div class="tbl"><table><thead><tr><th>Profile</th><th>Speed</th><th>Mostly played</th><th>Ended on</th><th>Calculated pick</th><th>Start-up</th><th>Rebuffers</th><th>Errors</th></tr></thead><tbody>${(run.results||[]).map(r=>{
+      const lv=x=>x?`${x.res} ${x.family} <span class="hint">${(x.bwKbps/1000).toFixed(2)} Mbps</span>`:"–";
+      const fam=r.endedOn&&r.endedOn.family; const cp=r.kbps&&fam?calcPick(V,fam,r.kbps):null;
+      return `<tr><td>${esc(r.profile)}</td><td>${r.kbps?(r.kbps/1000)+" Mbps":"10 → 1 → 10"}</td><td>${lv(r.mostPlayed)}</td><td>${lv(r.endedOn)}</td><td>${cp?`${cp.res} <span class="hint">${(cp.bw/1000).toFixed(2)} Mbps</span>`:"–"}</td><td>${r.startupMs!=null?(r.startupMs/1000).toFixed(1)+" s":"<span class='no'>never</span>"}</td><td>${r.rebuffers?`<span class="no">${r.rebuffers}</span> (${(r.rebufferMs/1000).toFixed(1)} s)`:"0"}</td><td>${r.errors&&r.errors.length?esc(r.errors.slice(0,3).join(", ")):"none"}</td></tr>`;}).join("")}</tbody></table></div>`;
+  }
+  p+=`<h3>Calculated pick for comparison</h3><p class="sub">The rendition a player should settle on: the highest whose BANDWIDTH is at most ${ABR} × the speed (hls.js default).</p>
+    <div class="tbl"><table><thead><tr><th>Network</th><th>Speed</th>${ctx.fams.map(f=>`<th>${f}</th>`).join("")}</tr></thead><tbody>
+    ${ctx.net.map(r=>`<tr><td>${r[0]}</td><td class="num">${(r[1]/1000).toLocaleString()} Mbps</td>${r.slice(2).map(x=>`<td>${x?`<b>${x.size}p</b> <span class="hint">${(x.bw/1000).toFixed(2)} Mbps</span>${x.bw>r[1]?" "+pill("WARN")+" may rebuffer":""}`:"–"}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+  $("playOut").innerHTML=(PLAYS.length?"":`<p class="hint">No playback results added yet.</p>`)+p;
+
+  $("tail").innerHTML=`<section><h2>Known issues</h2><p class="sub">Do not file these as bugs.</p><ul class="notes">${KNOWN_ISSUES.map(k=>`<li>${esc(k)}</li>`).join("")}</ul>
+    ${checks.filter(c=>c.sev==="Known").length?`<p class="sub" style="margin-top:6px">Seen on this media: ${checks.filter(c=>c.sev==="Known").map(c=>esc(c.a)).join("; ")}.</p>`:""}</section>`;
+}
+
+/* ---------- PDF ---------- */
+async function makePdf(){
+  const err=$("pdferr"); err.hidden=true;
+  try{
+    const {res,inp}=CUR, {checks,ctx}=res, S=summary(), when=new Date();
+    const doc=new jspdf.jsPDF({orientation:"landscape",unit:"pt",format:"a4"});
+    const W=doc.internal.pageSize.getWidth(), H=doc.internal.pageSize.getHeight(), M=36;
+    const C={PASS:[19,128,74],FAIL:[198,40,40],WARN:[138,90,0],INFO:[77,90,108],Critical:[179,18,31],High:[194,65,12],Medium:[138,90,0],INCOMPLETE:[138,90,0]};
+    const base={styles:{fontSize:8,cellPadding:4,valign:"top",lineColor:[217,223,232],lineWidth:.4,overflow:"linebreak"},headStyles:{fillColor:[31,42,68],textColor:255,fontStyle:"bold",fontSize:8},alternateRowStyles:{fillColor:[245,247,250]},margin:{left:M,right:M}};
+    const colorCol=idx=>({didParseCell:d=>{if(d.section==="body"&&d.column.index===idx&&C[d.cell.raw]){d.cell.styles.textColor=C[d.cell.raw];d.cell.styles.fontStyle="bold";}}});
+    let y=M;
+    const next=()=>doc.lastAutoTable?doc.lastAutoTable.finalY:y;
+    const section=(t,sub)=>{let yy=next()+22; if(yy>H-140){doc.addPage();yy=M;doc.lastAutoTable&&(doc.lastAutoTable.finalY=M-22);}
+      doc.setFont("helvetica","bold");doc.setFontSize(12);doc.setTextColor(31,42,68);doc.text(t,M,yy);doc.setTextColor(0);
+      if(sub){doc.setFont("helvetica","normal");doc.setFontSize(8);doc.setTextColor(91,102,119);const l=doc.splitTextToSize(sub,W-2*M);doc.text(l,M,yy+12);doc.setTextColor(0);return yy+14+l.length*9;}
+      return yy+8;};
+    doc.setFont("helvetica","bold");doc.setFontSize(18);doc.text("HLS Bitrate Ladder Verification Report",M,y+8);
+    doc.setFont("helvetica","normal");doc.setFontSize(9);doc.setTextColor(91,102,119);
+    doc.text(`Generated ${when.toLocaleString("en-IN",{timeZone:"Asia/Kolkata"})} IST  |  Rules: H.265 and custom ladder QA guide (4 Nov 2026)${inp.example?"  |  EXAMPLE DATA":""}`,M,y+24);
+    doc.setTextColor(0);
+    doc.autoTable({...base,startY:y+34,head:[["Setting","Value"]],columnStyles:{0:{cellWidth:150,fontStyle:"bold"}},body:[
+      ["Playback ID",inp.pid||"–"],["Media ID",inp.mid||"–"],["Playback URL",inp.url?inp.url.split("?")[0]:"–"],["mediaQuality",ctx.mq],["codecTier (effective)",ctx.tierEff],
+      ["Source / maxResolution",`${inp.src||"not given"} / ${inp.maxres}`],["DRM",inp.drm?"yes":"no"],["Devices tested / playback runs",`${DEVICES.length} / ${PLAYS.length}`]]});
+    y=doc.lastAutoTable.finalY+20;
+    doc.setFont("helvetica","bold");doc.setFontSize(15);doc.setTextColor(...C[S.verdict]);doc.text(`Overall: ${S.verdict}`,M,y);
+    doc.setFont("helvetica","normal");doc.setFontSize(10);doc.setTextColor(0);
+    doc.text(`${S.issues.length} issues to fix (${S.issues.filter(i=>i.sev==="Critical").length} critical, ${S.issues.filter(i=>i.sev==="High").length} high, ${S.issues.filter(i=>i.sev==="Medium").length} medium)  |  ${S.passes} checks passed, ${S.fails} failed, ${S.warns} warnings`,M+120,y);
+    doc.lastAutoTable.finalY=y;
+    if(ctx.expFail){doc.setFontSize(9);doc.text(doc.splitTextToSize("Expected ingest failure: "+ctx.expFail,W-2*M),M,y+14);doc.lastAutoTable.finalY=y+16;}
+    if(S.setup.length){let sy0=section("Playback test could not run","Test setup problem, not a FastPix bug; not counted as an issue.");
+      doc.autoTable({...base,startY:sy0,head:[["Device","Reason"]],body:S.setup.map(p=>[p.label,p.setup.message]),columnStyles:{0:{cellWidth:180}}});}
+    let sy=section("1. Issues to fix",S.issues.length?"Sorted by severity. Critical and high issues block sign-off. Known issues from the guide are excluded.":"No issues found in the manifest checks, device tests or playback runs included in this report.");
+    if(!S.issues.length)doc.lastAutoTable.finalY=sy;
+    if(S.issues.length)doc.autoTable({...base,startY:sy,head:[["Severity","Issue","Found","Fix","Area"]],body:S.issues.map(i=>[i.sev,i.title,i.evidence,i.fix,i.owner]),
+      columnStyles:{0:{cellWidth:55},1:{cellWidth:170},4:{cellWidth:95}},...colorCol(0),
+      willDrawCell:d=>{if(d.section==="body"&&d.column.index===0){const c=C[d.cell.raw];if(c){doc.setFillColor(...c);doc.rect(d.cell.x,d.cell.y,3,d.cell.height,"F");}}}});
+    sy=section("2. Manifest checks");
+    doc.autoTable({...base,startY:sy,head:[["Result","Check","Detail"]],body:checks.map(c=>[c.s,c.a,c.d]),columnStyles:{0:{cellWidth:50},1:{cellWidth:180}},...colorCol(0)});
+    if(ctx.notes.length){let yy=doc.lastAutoTable.finalY+12;doc.setFontSize(8);for(const n of ctx.notes){const l=doc.splitTextToSize("• "+n,W-2*M);doc.text(l,M,yy);yy+=l.length*10;} doc.lastAutoTable.finalY=yy-4;}
+    if(ctx.rows.length){sy=section("3. Rendition ladder (kbps)","Expected BANDWIDTH = (bitrate x 1.75 + 128 audio) x 1.03; expected AVERAGE-BANDWIDTH = (bitrate + 128 audio) x 1.03. Implied video is worked back from AVERAGE-BANDWIDTH. Pass within 2%.");
+      doc.autoTable({...base,startY:sy,head:[["Codec","Resolution","Configured","Origin","Exp. BANDWIDTH","BANDWIDTH","Exp. Avg","Avg","Implied video","Result"]],
+        body:ctx.rows.map(r=>[r[0],r[1],n0(r[2]),r[3],n0(r[4]),n0(r[5]),n0(r[6]),n0(r[7]),n0(r[8]),r[9]]),...colorCol(9)});}
+    if(ctx.levels.length){sy=section("4. CODECS levels","Advertised = the decoder level the manifest claims. Needed = the minimum the H.264 / H.265 standard requires for that size and frame rate.");
+      doc.autoTable({...base,startY:sy,head:[["Codec","Resolution","FPS","CODECS","Advertised","Needed","Result","Note"]],body:ctx.levels.map(r=>r.map(String)),...colorCol(6)});}
+    doc.addPage(); doc.lastAutoTable.finalY=M-22;
+    {const covered=new Set(DEVICES.map(d=>d.category||categoryOf(d.ua)));
+     sy=section("5. Device coverage");
+     doc.autoTable({...base,startY:sy,head:[["Device / browser","Needed","Tested"]],body:TARGETS.map(t=>[t,REQUIRED.has(t)?"Yes":"–",covered.has(t)?"Yes":"Not tested"]),columnStyles:{0:{cellWidth:260}},
+       didParseCell:d=>{if(d.section==="body"&&d.column.index===2){d.cell.styles.textColor=d.cell.raw==="Yes"?[19,128,74]:[138,90,0];d.cell.styles.fontStyle="bold";}}});}
+    sy=section("Real device test results",DEVICES.length?"Each device's own decoder was asked whether it can play every rendition (exact CODECS, size, frame rate and bitrate) through the browser's Media Capabilities API.":"No devices were tested for this report.");
+    if(DEVICES.length)doc.autoTable({...base,startY:sy,head:[["Device","Tested","H.264","H.265","Would play","Native HLS","Not decodable"]],body:DEVICES.map(d=>{const c=s=>!s?"–":s.all?("All rungs"+(s.smooth?"":" (some not smooth)")):s.some?"Partly":"No";
+      const bad=d.results.filter(x=>!x.supported).map(x=>`${x.family} ${x.res}`);return [d.label+"\n"+d.ua.slice(0,80),new Date(d.at).toLocaleString("en-IN",{dateStyle:"medium",timeStyle:"short"}),c(d.h264),c(d.h265),playsFamily(d),d.nativeHls?"yes":"no",bad.join(", ")||"none"];}),columnStyles:{0:{cellWidth:200}}});
+    sy=section("Expected per the guide (T23-T27)");
+    doc.autoTable({...base,startY:sy,head:[["Device or player","Expected family"]],body:ctx.expDevices,columnStyles:{0:{cellWidth:260}}});
+    sy=section("6. Real playback by network",PLAYS.length?"Played for real with hls.js in the browser named, with the download speed limited to each profile. Calculated pick = highest rendition with BANDWIDTH at most 0.7 x speed.":"No playback runs were included in this report.");
+    for(const run of PLAYS){
+      doc.autoTable({...base,startY:sy,head:[[{content:`${run.label}  |  hls.js ${run.env&&run.env.hls}  |  ${new Date(run.at).toLocaleString("en-IN",{dateStyle:"medium",timeStyle:"short"})}`,colSpan:8}],["Profile","Speed","Mostly played","Ended on","Calculated pick","Start-up","Rebuffers","Errors"]],
+        body:(run.results||[]).map(r=>{const lv=x=>x?`${x.res} ${x.family} (${(x.bwKbps/1000).toFixed(2)} Mbps)`:"–";const fam=r.endedOn&&r.endedOn.family;const cp=r.kbps&&fam?calcPick(ctx.V,fam,r.kbps):null;
+          return [r.profile,r.kbps?(r.kbps/1000)+" Mbps":"10 > 1 > 10 Mbps",lv(r.mostPlayed),lv(r.endedOn),cp?`${cp.res} (${(cp.bw/1000).toFixed(2)} Mbps)`:"–",r.startupMs!=null?(r.startupMs/1000).toFixed(1)+" s":"never",r.rebuffers?`${r.rebuffers} (${(r.rebufferMs/1000).toFixed(1)} s)`:"0",(r.errors||[]).slice(0,3).join(", ")||"none"];})});
+      sy=doc.lastAutoTable.finalY+10;
+    }
+    sy=section("Calculated pick by network");
+    doc.autoTable({...base,startY:sy,head:[["Network","Speed",...ctx.fams]],body:ctx.net.map(r=>[r[0],(r[1]/1000)+" Mbps",...r.slice(2).map(x=>x?`${x.size}p (${(x.bw/1000).toFixed(2)} Mbps)${x.bw>r[1]?"  may rebuffer":""}`:"–")])});
+    sy=section("7. Known issues (do not file as bugs)");
+    doc.autoTable({...base,startY:sy,head:[["Item"]],body:KNOWN_ISSUES.map(k=>[k])});
+    const pages=doc.getNumberOfPages(); for(let i=1;i<=pages;i++){doc.setPage(i);doc.setFontSize(7);doc.setTextColor(120);doc.text(`Page ${i} of ${pages}  |  Bitrates are checked from the master playlist; segment bytes need check_master.py from the guide`,M,H-16);}
+    const name=`ladder-report-${(inp.pid||inp.mq).replace(/[^\w-]/g,"").slice(0,40)}-${when.toISOString().slice(0,10)}.pdf`;
+    doc.save(name);
+  }catch(e){ err.textContent="The PDF could not be saved"+(e&&e.message?`: ${e.message}`:".")+" Try again."; err.hidden=false; }
+}
+
+/* ---------- form ---------- */
+const EX_LADDER=[{"resolution":"144p","bitrate":150,"h265Bitrate":100},{"resolution":"270p","bitrate":400,"h265Bitrate":300},{"resolution":"360p","bitrate":700,"h265Bitrate":550},{"resolution":"480p","bitrate":1200,"h265Bitrate":900},{"resolution":"540p","bitrate":1800,"h265Bitrate":1600},{"resolution":"720p","bitrate":3000,"h265Bitrate":2400},{"resolution":"1080p","bitrate":5000,"h265Bitrate":4500},{"resolution":"1080p","bitrate":6500,"h265Bitrate":5800},{"resolution":"1440p","bitrate":9000,"h265Bitrate":9000},{"resolution":"2160p","bitrate":18000,"h265Bitrate":12000}];
+function exampleManifest(){
+  const L=[[256,144,150,100,"64000d","L60"],[480,270,400,300,"640016","L90"],[640,360,700,550,"640016","L90"],[854,480,1200,900,"64001e","L93"],[960,540,1800,1600,"640020","L93"],[1280,720,3000,2400,"640020","L120"],[1920,1080,5000,4500,"64002a","L123"],[1920,1080,6500,5800,"64002a","L123"]];
+  const o=["#EXTM3U","#EXT-X-VERSION:5","#EXT-X-INDEPENDENT-SEGMENTS"];
+  [0,1].forEach(f=>L.forEach(([w,h,b,b5,a,l],i)=>{const v=f?b5:b;
+    o.push(`#EXT-X-STREAM-INF:BANDWIDTH=${Math.round(OVERHEAD*(PEAK*v+128)*1000)},AVERAGE-BANDWIDTH=${Math.round(OVERHEAD*(v+128)*1000)},CODECS="${f?"hvc1.1.2."+l+".80":"avc1."+a},mp4a.40.2",RESOLUTION=${w}x${h},FRAME-RATE=60.0,VIDEO-RANGE=SDR,AUDIO="default-audio-group"`,`stream_${f*8+i}.m3u8`);}));
+  return o.join("\n");
+}
+let isExample=false;
+const FIELDS=["url","m3u8","pid","mid","mq","tier","ladder","src","maxres"];
+function readForm(){const o={};FIELDS.forEach(k=>o[k]=$(k).value);o.drm=$("drm").checked;return o;}
+function writeForm(o){FIELDS.forEach(k=>{if(o[k]!=null)$(k).value=o[k];});$("drm").checked=!!o.drm;syncForm();}
+function loadExample(){
+  writeForm({url:"https://stream.fastpix.co/EXAMPLE.m3u8",m3u8:exampleManifest(),pid:"EXAMPLE",mid:"",mq:"custom",tier:"plus",ladder:JSON.stringify(EX_LADDER,null,1),src:"1920x1080",maxres:"1080p",drm:false});
+  isExample=true; DEVICES=[]; PLAYS=[]; submit();
+}
+function syncForm(){
+  const mq=$("mq").value, t=$("tier").value;
+  $("ladderwrap").hidden=mq!=="custom"; $("tier").disabled=mq==="standard";
+  $("tierhint").textContent=mq==="standard"?"Standard media ignore codecTier and are always H.264 only."
+    : !t?"No codecTier: treated as basic, so H.264 only.":t==="plus"?(mq==="custom"?"H.264 at each bitrate plus H.265 at each h265Bitrate.":"H.264 plus H.265 at the same sizes and BANDWIDTH."):t==="basic"?"H.264 only."+(mq==="custom"?" h265Bitrate values are ignored.":""):"This value should make the media fail.";
+  const u=$("url").value.trim(); $("openurl").hidden=!/^https?:\/\//.test(u); if(!$("openurl").hidden)$("openurl").href=u;
+}
+function submit(){
+  const fe=$("formerr"); fe.hidden=true;
+  let ladder=null;
+  if($("mq").value==="custom"&&$("ladder").value.trim()){try{ladder=JSON.parse($("ladder").value);}catch(e){fe.textContent="The custom ladder is not valid JSON. Check for a missing comma or bracket.";fe.hidden=false;return false;}}
+  const text=$("m3u8").value;
+  if(!text.trim()){fe.textContent="Paste the master playlist text or upload the .m3u8 file. This page can't fetch the URL itself.";fe.hidden=false;return false;}
+  const src=$("src").value.trim(); if(src&&!/^\d+\s*x\s*\d+$/i.test(src)){fe.textContent="Write the source resolution as width x height, for example 3840x2160.";fe.hidden=false;return false;}
+  const inp={text,url:$("url").value.trim(),pid:$("pid").value.trim(),mid:$("mid").value.trim(),mq:$("mq").value,tier:$("mq").value==="standard"?"":$("tier").value,
+    ladder,src:src.replace(/\s/g,""),maxres:$("maxres").value,drm:$("drm").checked,example:isExample};
+  CUR={res:run(inp),inp}; renderAll(); return true;
+}
+
+/* ---------- persistence (this browser only) ---------- */
+let SERVER=null, REV=-1, applying=false;
+let MYREC=null;
+const QS=new URLSearchParams(location.search), AUTORUN=QS.get("autorun")==="1", TAG=QS.get("device")||null;
+const API=(path,body)=>fetch(path,{method:body?"POST":"GET",headers:body?{"Content-Type":"application/json"}:{},body:body?JSON.stringify(body):undefined,cache:"no-store"}).then(r=>r.json());
+function save(){
+  try{localStorage.setItem(LS_KEY,JSON.stringify({form:{...readForm(),drm:$("drm").checked},DEVICES,PLAYS,targets:[...REQUIRED]}));}catch(e){}
+  if(SERVER&&!applying&&!isExample)API("/api/form",{form:{...readForm(),drm:$("drm").checked},targets:[...REQUIRED]}).catch(()=>{});
+}
+function pushResult(devs,plays){ if(SERVER)API("/api/result",{devices:devs,playback:plays}).catch(()=>{}); }
+function applyState(st,first){
+  if(AUTORUN)return;
+  applying=true;
+  if(st.targets)REQUIRED=new Set(st.targets);
+  if(st.form&&st.form.m3u8&&(first||JSON.stringify(st.form)!==JSON.stringify({...readForm(),drm:$("drm").checked}))&&!busy){writeForm(st.form);isExample=false;submit();}
+  DEVICES=st.devices||[];PLAYS=st.plays||[];
+  if(CUR)renderAll();
+  applying=false;
+}
+async function restore(){
+  try{ if(location.protocol.startsWith("http")){const st=await API("/api/state"); if(st&&st.server){SERVER=st;REV=st.rev;
+      $("srvOn").hidden=false;$("srvOff").hidden=true;
+      const lan=(st.lan&&st.lan[0])||location.origin+"/"; $("lanUrl").textContent=lan;
+      try{new QRCode($("qr"),{text:lan,width:150,height:150});}catch(e){$("qr").hidden=true;}
+      if(AUTORUN){DEVICES=st.devices||[];PLAYS=st.plays||[];}else if(st.form&&st.form.m3u8){applyState(st,true);}else loadExample();
+      setInterval(async()=>{try{const n=await API("/api/state");if(n.rev!==REV){REV=n.rev;SERVER=n;applyState(n,false);}}catch(e){}},4000);
+      return;}}
+  }catch(e){}
+  let o=null; try{o=JSON.parse(localStorage.getItem(LS_KEY)||"null");}catch(e){}
+  if(o&&o.targets)REQUIRED=new Set(o.targets);
+  if(o&&o.form&&o.form.m3u8){writeForm(o.form);DEVICES=o.DEVICES||[];PLAYS=o.PLAYS||[];isExample=false;submit();}
+  else loadExample();
+}
+function setMsg(id,t,ok){const e=$(id);e.textContent=t;e.className=ok===false?"err":ok?"ok":"hint";}
+
+/* ---------- fetch manifest ---------- */
+async function fetchManifest(){
+  const u=$("url").value.trim(); setMsg("formerr","",null); $("formerr").hidden=true;
+  if(!/^https?:\/\/.+/i.test(u)){$("formerr").textContent="Enter the playback URL first.";$("formerr").hidden=false;return false;}
+  $("fetchBtn").disabled=true;
+  try{let r; try{r=await fetch(u,{cache:"no-store"});}catch(x){ if(!SERVER)throw x; r=await fetch("/proxy?u="+encodeURIComponent(u),{cache:"no-store"}); }
+    let t=await r.text(); if(t.includes("/proxy?u=")){t=t.split(/\r?\n/).map(l=>l.startsWith("/proxy?u=")?decodeURIComponent(l.slice(9)):l.replace(/URI="\/proxy\?u=([^"]+)"/g,(m,x)=>`URI="${decodeURIComponent(x)}"`)).join("\n");}
+    if(!r.ok||!t.includes("#EXTM3U"))throw new Error(r.ok?"not a playlist":"HTTP "+r.status);
+    $("m3u8").value=t; isExample=false;
+    const m=u.match(/\/([A-Za-z0-9_-]{6,})\.m3u8/); if(m&&!$("pid").value.trim())$("pid").value=m[1];
+    $("fetchBtn").disabled=false; return true;
+  }catch(e){$("formerr").textContent=`Couldn't load the playlist (${e.message}). The link may have expired, or the server blocks this page. Open it in a new tab, copy the text and paste it below.`;$("formerr").hidden=false;$("fetchBtn").disabled=false;return false;}
+}
+$("fetchBtn").addEventListener("click",async()=>{if(await fetchManifest()){submit();save();}});
+
+/* ---------- playback (hls.js with a speed limit) ---------- */
+const PROFILES=[["2G / EDGE",250],["Slow 3G",500],["3G (1 Mbps)",1000],["Fast 3G",1600],["4G LTE, weak",3000],["4G LTE",6000],["4G+ / Wi-Fi",10000],["Broadband 25 Mbps",25000],["Step test 10 → 1 → 10 Mbps",-1]];
+const DEFAULT_ON=new Set([500,1000,3000,6000,10000,-1]);
+$("profiles").innerHTML=PROFILES.map(([n,k],i)=>`<label><input type="checkbox" id="p${i}" ${DEFAULT_ON.has(k)?"checked":""}> ${n}</label>`).join("");
+const famOf=c=>/^(hvc1|hev1)/.test(c||"")?"H.265":/^avc1/.test(c||"")?"H.264":(c||"?");
+let stopFlag=false, active=null, busy=false;
+function throttledLoader(link){
+  const Base=Hls.DefaultConfig.loader;
+  return class extends Base{
+    load(context,config,callbacks){
+      const ok=callbacks.onSuccess, self=this;
+      super.load(context,config,{...callbacks,onSuccess:(resp,stats,ctx,net)=>{
+        const bytes=stats.loaded||(resp.data&&(resp.data.byteLength||resp.data.length))||0;
+        const dur=bytes*8/link.kbps();
+        const start=Math.max(stats.loading.start,link.busyUntil); const end=start+dur; link.busyUntil=end;
+        setTimeout(()=>{ if(self._dead||link.dead)return; stats.loading.end=performance.now(); ok(resp,stats,ctx,net); },Math.max(0,end-performance.now()));
+      }});
+    }
+    abort(){this._dead=true;super.abort();}
+    destroy(){this._dead=true;super.destroy();}
+  };
+}
+function runProfile(url,name,kbps,secs){
+  return new Promise(resolve=>{
+    const v=$("v"), t0=performance.now();
+    const schedule=kbps>0?null:[[0,10000],[secs/3,1000],[2*secs/3,10000]];
+    const link={busyUntil:0,dead:false,kbps:()=>{if(!schedule)return kbps;const t=(performance.now()-t0)/1000;let k=schedule[0][1];for(const [s,x] of schedule)if(t>=s)k=x;return k;}};
+    const hls=new Hls({loader:throttledLoader(link),capLevelToPlayerSize:false,startLevel:-1,maxBufferLength:30});
+    const res={profile:name,kbps:kbps>0?kbps:null,schedule,levels:[],played:{},startupMs:null,rebuffers:0,rebufferMs:0,errors:[],fatal:false,switches:[]};
+    let cur=null,curSince=null,started=false,stallAt=null,done=false;
+    const credit=()=>{if(cur!=null&&curSince!=null)res.played[cur]=(res.played[cur]||0)+(performance.now()-curSince)/1000;curSince=performance.now();};
+    const onWaiting=()=>{if(started&&stallAt==null){stallAt=performance.now();res.rebuffers++;}};
+    const onPlaying=()=>{if(!started){started=true;res.startupMs=Math.round(performance.now()-t0);}if(stallAt!=null){res.rebufferMs+=performance.now()-stallAt;stallAt=null;}};
+    v.addEventListener("waiting",onWaiting);v.addEventListener("playing",onPlaying);
+    hls.on(Hls.Events.MANIFEST_PARSED,()=>{res.levels=hls.levels.map((l,i)=>({i,res:`${l.width}x${l.height}`,family:famOf(l.videoCodec),codec:l.videoCodec,bwKbps:Math.round(l.bitrate/1000)}));v.muted=true;v.play().catch(e=>{if(e.name!=="AbortError")res.errors.push("play() refused: "+e.name);});});
+    const onCanPlay=()=>{if(v.paused&&!done)v.play().catch(e=>{if(e.name!=="AbortError"&&!res.errors.includes("play() refused: "+e.name))res.errors.push("play() refused: "+e.name);});};v.addEventListener("canplay",onCanPlay);
+    hls.on(Hls.Events.LEVEL_SWITCHED,(e,d)=>{credit();cur=d.level;res.switches.push({t:+((performance.now()-t0)/1000).toFixed(1),level:d.level});});
+    hls.on(Hls.Events.ERROR,(e,d)=>{const code=d.response&&d.response.code!=null?` (HTTP ${d.response.code})`:"";res.errors.push((d.fatal?"FATAL ":"")+d.details+code);if(d.fatal){res.fatal=true;finish();}});
+    const timer=setInterval(()=>{const left=Math.max(0,secs-(performance.now()-t0)/1000);const l=cur!=null&&res.levels[cur];
+      $("status").innerHTML=`<b>${name}</b>: ${l?`playing ${l.res} ${l.family}`:"loading"} · ${Math.ceil(left)} s left`; if(left<=0||stopFlag)finish();},500);
+    function finish(){
+      if(done)return;done=true;clearInterval(timer);credit();if(stallAt!=null)res.rebufferMs+=performance.now()-stallAt;
+      const q=v.getVideoPlaybackQuality?v.getVideoPlaybackQuality():null;res.droppedFrames=q?q.droppedVideoFrames:null;res.totalFrames=q?q.totalVideoFrames:null;
+      res.rebufferMs=Math.round(res.rebufferMs);
+      const top=Object.entries(res.played).sort((a,b)=>b[1]-a[1])[0];
+      res.mostPlayed=top?{...res.levels[top[0]],seconds:+top[1].toFixed(1)}:null; res.endedOn=cur!=null?res.levels[cur]:null;
+      res.familiesPlayed=[...new Set(Object.keys(res.played).map(i=>res.levels[i]&&res.levels[i].family))]; res.started=started;
+      link.dead=true;v.removeEventListener("waiting",onWaiting);v.removeEventListener("playing",onPlaying);v.removeEventListener("canplay",onCanPlay);
+      hls.destroy();v.removeAttribute("src");v.load(); resolve(res);
+    }
+    active={finish}; hls.attachMedia(v); hls.loadSource(url);
+  });
+}
+function setStep(i,state,text){const e=$("st"+i);if(!e)return;e.className="step "+state;e.querySelector(".st").textContent={wait:"WAITING",run:"RUNNING",done:"DONE",fail:"FAILED",skip:"SKIPPED"}[state];if(text)$("st"+i+"t").textContent=text;}
+async function probe(u,range){
+  try{const r=await fetch(u,{cache:"no-store",headers:range?{Range:"bytes=0-1023"}:{}}); return {ok:r.ok||r.status===206,status:r.status,text:range?null:await r.text()};}
+  catch(e){return {ok:false,status:0};}
+}
+function why(step,pr){
+  if(pr.status===0)return `The browser blocked the request for the ${step}. Usually FastPix does not allow requests from a page opened as a local file (file://), or the network is offline. Open this file from a web address (for example http://localhost) or a team web host and try again.`;
+  if(pr.status===403||pr.status===401)return `The ${step} returned HTTP ${pr.status}. The signed link has probably expired; copy a fresh playback URL and try again.`;
+  if(pr.status===404)return `The ${step} returned HTTP 404 (not found). Check the playback ID, and whether the media has finished processing.`;
+  return `The ${step} returned HTTP ${pr.status}.`;
+}
+async function preflight(url){
+  const m=await probe(url); if(!m.ok||!(m.text||"").includes("#EXTM3U"))return {ok:false,message:m.ok?"The playback URL did not return an HLS playlist.":why("master playlist",m)};
+  const lines=m.text.split(/\r?\n/), i=lines.findIndex(l=>l.startsWith("#EXT-X-STREAM-INF"));
+  const vu=i>=0?lines.slice(i+1).find(l=>l&&!l.startsWith("#")):null; if(!vu)return {ok:false,message:"The master playlist lists no renditions."};
+  const vurl=new URL(vu,url).href, v=await probe(vurl); if(!v.ok)return {ok:false,message:why("first rendition playlist",v)};
+  const vl=(v.text||"").split(/\r?\n/); const mapm=(v.text||"").match(/#EXT-X-MAP:URI="([^"]+)"/); const seg=mapm?mapm[1]:vl.find(l=>l&&!l.startsWith("#"));
+  if(seg){const sp=await probe(new URL(seg,vurl).href,true); if(!sp.ok)return {ok:false,message:why("first video segment",sp)};}
+  return {ok:true};
+}
+function deviceName(){const cat=categoryOf(navigator.userAgent), m=$("devLabel").value.trim(); return m?`${cat} (${m})`:cat;}
+$("devLabel").addEventListener("input",()=>{const m=$("devLabel").value.toLowerCase(), cat=categoryOf(navigator.userAgent).toLowerCase();
+  const clash=[["iphone","iphone"],["ipad","iphone"],["android","android"],["safari","safari"],["firefox","firefox"],["edge","edge"],["windows","windows"],["tv","tv"]].find(([w,c])=>m.includes(w)&&!cat.includes(c));
+  setMsg("devMsg",clash?`This browser is ${categoryOf(navigator.userAgent)}. Typing a name doesn't change the device being tested; open the page on the ${clash[0]} itself.`:"",clash?false:null);});
+async function runPlayback(){
+  const url=$("url").value.trim();
+  if(isExample||!/^https?:\/\/.+/.test(url)){setMsg("status","Enter a real playback URL to run the playback test. The example has no stream.",false);setStep(3,"skip","No real playback URL");return false;}
+  if(!window.Hls){setMsg("status","hls.js did not load. Check the internet connection and reload.",false);setStep(3,"fail","hls.js did not load");return false;}
+  if(!Hls.isSupported()){setMsg("status","This browser can't limit the download speed (no Media Source Extensions). The device test still works.",false);setStep(3,"skip","Not supported in this browser");return false;}
+  const secs=Math.max(15,+$("secs").value||45), picks=PROFILES.filter((p,i)=>$("p"+i).checked);
+  if(!picks.length){setMsg("status","Pick at least one network profile.",false);return false;}
+  busy=true;stopFlag=false;$("playRun").disabled=true;$("runAll").disabled=true;$("playStop").disabled=false;
+  const label=deviceName();
+  PLAYS=PLAYS.filter(p=>p.imported||p.label!==label);          // replace this device's earlier playback run
+  const rec=MYREC={label,tag:TAG,category:categoryOf(navigator.userAgent),at:new Date().toISOString(),url:url.split("?")[0],env:{browser:navigator.userAgent,hls:Hls.version},results:[]};
+  setStep(3,"run","Checking the stream can be reached…"); setMsg("status","Checking the master playlist, first rendition and first segment…");
+  let pf=await preflight(url), playUrl=url;
+  if(!pf.ok&&SERVER&&/blocked/.test(pf.message)){const purl=location.origin+"/proxy?u="+encodeURIComponent(url); const pf2=await preflight(purl);
+    if(pf2.ok){pf={ok:true,viaProxy:true};playUrl=purl;rec.viaProxy=true;}}
+  rec.setup=pf;
+  PLAYS=[...PLAYS,rec];
+  if(!pf.ok){rec.complete=true;renderAll();save();pushResult([],[rec]);setStep(3,"fail","Stream not reachable from this page");setMsg("status",pf.message,false);
+    busy=false;$("playRun").disabled=false;$("runAll").disabled=false;$("playStop").disabled=true;return false;}
+  let n=0;
+  for(const [name,kbps] of picks){ if(stopFlag)break; n++; setStep(3,"run",`Playing profile ${n} of ${picks.length}: ${name}`);
+    const r=await runProfile(playUrl,name,kbps,kbps>0?secs:secs*3); rec.results.push(r); renderAll(); save();
+    if(n===1&&!r.started&&r.errors.some(e=>/manifestLoad|levelLoad/.test(e))){rec.setup={ok:false,message:`hls.js could not load the stream (${r.errors.slice(0,2).join(", ")}) even though the playlist was reachable. Remaining profiles were skipped.`};rec.results=[];renderAll();save();break;}
+  }
+  busy=false;$("playRun").disabled=false;$("runAll").disabled=false;$("playStop").disabled=true;
+  rec.complete=true; pushResult([],[rec]);
+  const okRun=!rec.setup||rec.setup.ok;
+  setStep(3,okRun?(stopFlag?"skip":"done"):"fail",okRun?`${rec.results.length} profile${rec.results.length===1?"":"s"} played`:"Stream could not be played");
+  setMsg("status",stopFlag?"Stopped. Partial results are in the report.":okRun?"Playback test done.":rec.setup.message,okRun); return okRun;
+}
+$("playRun").addEventListener("click",runPlayback);
+$("playStop").addEventListener("click",()=>{stopFlag=true;active&&active.finish();});
+
+/* ---------- device test ---------- */
+async function runDevice(){
+  if(!CUR)return; $("devRun").disabled=true; setMsg("devMsg","Testing…");
+  try{ const d=await testDevice(CUR.res.ctx.V); d.category=categoryOf(navigator.userAgent); d.label=deviceName(); d.tag=TAG;
+    DEVICES=[...DEVICES.filter(x=>!(x.ua===d.ua&&x.label===d.label)),d]; renderAll(); save(); pushResult([d],[]);
+    setMsg("devMsg",`Added: ${d.label}.`,true); }
+  catch(e){ setMsg("devMsg","The device test couldn't run in this browser.",false); }
+  $("devRun").disabled=false;
+}
+$("devRun").addEventListener("click",runDevice);
+
+/* ---------- run everything ---------- */
+$("runAll").addEventListener("click",()=>runFull());
+async function runFull(){
+  [1,2,3,4].forEach(i=>setStep(i,"wait"));
+  setStep(1,"run","Loading the playlist…");
+  if($("url").value.trim()&&!isExample){ const had=$("m3u8").value.trim(); const ok=await fetchManifest(); if(!ok&&!had){setStep(1,"fail","Couldn't load the playlist");return;} }
+  if(!submit()){setStep(1,"fail","Fix the settings shown in red");return;} save();
+  {const S=summary(); setStep(1,S.fails?"fail":"done",S.fails?`${S.fails} check${S.fails>1?"s":""} failed`:"Manifest matches the settings");}
+  setStep(2,"run","Testing this device…");
+  const label=deviceName(); DEVICES=DEVICES.filter(d=>d.imported||d.label!==label);
+  await runDevice();
+  const d=DEVICES.filter(x=>!x.imported).at(-1);
+  setStep(2,d?(d.h264&&d.h264.all?"done":"fail"):"fail",d?`${d.label}: plays ${playsFamily(d)}. Test other devices by running this file on them.`:"Device test couldn't run");
+  await runPlayback();
+  const S=summary(); setStep(4,"done",`Overall ${S.verdict}. Download the PDF.`);
+  $("out").scrollIntoView({behavior:"smooth",block:"start"});
+}
+
+/* ---------- export / import between devices ---------- */
+$("exportBtn").addEventListener("click",()=>{
+  const mine=deviceName();
+  const out={tool:"fastpix-stream-qa",version:2,at:new Date().toISOString(),url:$("url").value.trim().split("?")[0],pid:$("pid").value.trim(),
+    devices:DEVICES.filter(d=>!d.imported),playback:PLAYS.filter(p=>!p.imported)};
+  if(!out.devices.length&&!out.playback.length){setMsg("impMsg","Nothing to export yet. Run the device or playback test on this device first.",false);return;}
+  const blob=new Blob([JSON.stringify(out)],{type:"application/json"}); const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob); a.download=`stream-qa-${(out.pid||"media").replace(/[^\w-]/g,"")}-${mine.replace(/[^\w-]+/g,"_")}.json`; document.body.appendChild(a); a.click(); a.remove();
+  setMsg("impMsg","Exported. Send the file to the computer that makes the report.",true);
+});
+$("importFile").addEventListener("change",async e=>{
+  let nd=0,np=0,bad=0,warn="";
+  for(const f of e.target.files){ try{const o=JSON.parse(await f.text()); if(o.tool!=="fastpix-stream-qa")throw 0;
+    const pid=$("pid").value.trim(); if(pid&&o.pid&&o.pid!==pid)warn=` ${f.name} is for playback ID ${o.pid}, not ${pid}.`;
+    const key=x=>x.label+"|"+x.at;const hasD=new Set(DEVICES.map(key)),hasP=new Set(PLAYS.map(key));
+    for(const d of o.devices||[]){if(hasD.has(key(d)))continue;DEVICES.push({...d,imported:true});nd++;} for(const p of o.playback||[]){if(hasP.has(key(p)))continue;PLAYS.push({...p,imported:true});np++;}
+  }catch(x){bad++;} }
+  e.target.value=""; renderAll(); save();
+  setMsg("impMsg",`Added ${nd} device test${nd===1?"":"s"} and ${np} playback run${np===1?"":"s"}.`+(bad?` ${bad} file(s) were not Stream QA exports.`:"")+warn,!(bad||warn));
+});
+const resetAll=()=>{DEVICES=[];PLAYS=[];if(SERVER)API("/api/reset",{}).catch(()=>{});renderAll();save();setMsg("impMsg","Device and playback results cleared.",true);};
+$("resetRes").addEventListener("click",resetAll);$("resetRes2").addEventListener("click",resetAll);
+
+$("f").addEventListener("submit",e=>{e.preventDefault();submit();});
+["mq","tier","url"].forEach(id=>$(id).addEventListener("input",syncForm));
+["m3u8","ladder","pid"].forEach(id=>$(id).addEventListener("input",()=>{isExample=false;}));
+["url","m3u8","pid","mid","mq","tier","ladder","src","maxres","drm"].forEach(id=>$(id).addEventListener("change",save));
+$("m3u8file").addEventListener("change",e=>{const f=e.target.files[0]; if(!f)return; const r=new FileReader(); r.onload=()=>{$("m3u8").value=r.result;isExample=false;}; r.readAsText(f);});
+$("example").addEventListener("click",loadExample);
+$("clear").addEventListener("click",()=>{writeForm({url:"",m3u8:"",pid:"",mid:"",ladder:"",src:"",tier:"",mq:"custom",maxres:"1080p",drm:false});$("m3u8file").value="";isExample=false;CUR=null;
+  $("out").innerHTML='<div class="panel empty">Fill in the settings and run the check.</div>';$("devSec").hidden=true;$("playSec").hidden=true;$("tail").innerHTML="";});
+$("devLabel").placeholder=`Device name, e.g. ${guessDevice()}`;
+$("thisDev").textContent=categoryOf(navigator.userAgent);
+restore().then(async()=>{
+  if(!AUTORUN)return;
+  try{
+    const c=JSON.parse(decodeURIComponent(escape(atob(QS.get("cfg").replace(/-/g,"+").replace(/_/g,"/")))));
+    writeForm({url:c.url,m3u8:"",pid:c.pid||"",mid:c.mid||"",mq:c.mq,tier:c.tier||"",ladder:c.ladder||"",src:c.src||"",maxres:c.maxres||"1080p",drm:!!c.drm});
+    isExample=false; $("devLabel").value=QS.get("model")||"";
+    if(Array.isArray(c.profiles))PROFILES.forEach((p,i)=>{$("p"+i).checked=c.profiles.includes(i);});
+    if(c.secs)$("secs").value=c.secs;
+    await runFull();
+  }catch(e){ console.error(e); }
+  if(!(MYREC&&MYREC.complete)){const r={label:deviceName(),tag:TAG,category:categoryOf(navigator.userAgent),at:new Date().toISOString(),complete:true,
+    setup:{ok:false,message:$("status").textContent||"The test could not run in this browser."},results:[],env:{browser:navigator.userAgent,hls:window.Hls?Hls.version:null}};PLAYS.push(r);pushResult([],[r]);}
+  document.title="QA_DONE";
+});
+
+/* ---------- GitHub cloud run ---------- */
+const GHK="fastpix-stream-qa:gh";
+try{const g=JSON.parse(localStorage.getItem(GHK)||"{}");if(g.repo)$("ghRepo").value=g.repo;if(g.branch)$("ghBranch").value=g.branch;if(g.token)$("ghToken").value=g.token;if(g.last)window.LAST_KEY=g.last;}catch(e){}
+const ghSave=extra=>{try{const g=JSON.parse(localStorage.getItem(GHK)||"{}");localStorage.setItem(GHK,JSON.stringify({...g,repo:$("ghRepo").value.trim(),branch:$("ghBranch").value.trim()||"main",token:$("ghToken").value.trim(),...extra}));}catch(e){}};
+async function gh(path,opt={}){
+  const r=await fetch("https://api.github.com/repos/"+$("ghRepo").value.trim()+path,{...opt,headers:{Authorization:"Bearer "+$("ghToken").value.trim(),Accept:opt.raw?"application/vnd.github.raw+json":"application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28",...(opt.body?{"Content-Type":"application/json"}:{})}});
+  if(r.status===204)return null;
+  if(!r.ok){let m="";try{m=(await r.json()).message;}catch(e){} const err=new Error(m||("HTTP "+r.status));err.status=r.status;throw err;}
+  return opt.raw?r.text():r.json();
+}
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const ghWhy=e=>e.status===401?"The GitHub token was refused. Check it hasn't expired.":e.status===403?"The token doesn't have permission. It needs Actions: read and write, and Contents: read, on this repo.":e.status===404?"Repo or workflow not found. Check the repo name, the branch, and that .github/workflows/stream-qa.yml is pushed.":e.message;
+function renderJobs(jobs,runUrl){
+  const st=j=>j.status!=="completed"?(j.status==="in_progress"?"RUNNING":"QUEUED"):j.conclusion==="success"?"DONE":j.conclusion==="skipped"?"SKIPPED":"FAILED";
+  const cls={RUNNING:"INFO",QUEUED:"INFO",DONE:"PASS",SKIPPED:"WARN",FAILED:"FAIL"};
+  $("cloudJobs").innerHTML=`<div class="tbl"><table><tbody>${jobs.map(j=>`<tr><td>${esc(j.name)}</td><td>${pill(cls[st(j)]).replace(cls[st(j)]+"<",st(j)+"<")}</td></tr>`).join("")}</tbody></table></div>${runUrl?`<p class="hint" style="margin-top:6px"><a class="link" href="${esc(runUrl)}" target="_blank" rel="noopener">Open the run on GitHub</a></p>`:""}`;
+}
+async function loadCloud(key){
+  const txt=await gh(`/contents/results/${key}.json?ref=qa-results`,{raw:true});
+  const o=JSON.parse(txt);
+  DEVICES=o.devices||[];PLAYS=o.plays||[];
+  const cov=new Set(DEVICES.map(d=>d.category||categoryOf(d.ua)));REQUIRED=new Set([...cov].filter(t=>TARGETS.includes(t)));
+  if(o.config&&!CUR){writeForm({...o.config,m3u8:$("m3u8").value});}
+  renderAll();save();
+  setMsg("cloudMsg",`Results loaded: ${DEVICES.length} device tests and ${PLAYS.length} playback runs. Download the PDF from the report.`,true);
+  [1,2,3,4].forEach(i=>setStep(i,"done"));setStep(4,"done","Cloud results loaded. Download the PDF.");
+}
+$("cloudRun").addEventListener("click",async()=>{
+  if(!$("ghRepo").value.trim()||!$("ghToken").value.trim()){setMsg("cloudMsg","Enter the GitHub repo and token first.",false);return;}
+  if(!/^https?:\/\//.test($("url").value.trim())){setMsg("cloudMsg","Enter the real playback URL first.",false);return;}
+  if($("m3u8").value.trim()||isExample===false){ if(!submit())return; }
+  const f=readForm(); const key="qa"+Date.now().toString(36);
+  const cfg={url:f.url,pid:f.pid,mid:f.mid,mq:f.mq,tier:f.tier,ladder:f.ladder,src:f.src,maxres:f.maxres,drm:$("drm").checked,
+    profiles:PROFILES.map((p,i)=>$("p"+i).checked?i:-1).filter(i=>i>=0),secs:Math.max(15,+$("secs").value||30)};
+  ghSave({last:key}); $("cloudRun").disabled=true;
+  try{
+    setMsg("cloudMsg","Starting the cloud run…");
+    await gh("/actions/workflows/stream-qa.yml/dispatches",{method:"POST",body:JSON.stringify({ref:$("ghBranch").value.trim()||"main",inputs:{run_key:key,config:JSON.stringify(cfg)}})});
+    let run=null;
+    for(let i=0;i<30&&!run;i++){await sleep(4000);const r=await gh("/actions/runs?event=workflow_dispatch&per_page=20");run=(r.workflow_runs||[]).find(x=>(x.name||"").includes(key)||(x.display_title||"").includes(key));}
+    if(!run)throw new Error("GitHub accepted the request, but the run didn't appear within two minutes. Open the Actions tab on GitHub to check.");
+    setMsg("cloudMsg","Running on all devices. This usually takes 10 to 25 minutes; you can leave this page open.");
+    while(true){
+      const j=await gh(`/actions/runs/${run.id}/jobs?per_page=50`); renderJobs(j.jobs||[],run.html_url);
+      const r=await gh(`/actions/runs/${run.id}`); if(r.status==="completed")break; await sleep(15000);
+    }
+    await loadCloud(key);
+  }catch(e){setMsg("cloudMsg",ghWhy(e),false);}
+  $("cloudRun").disabled=false;
+});
+$("cloudLoad").addEventListener("click",async()=>{
+  let key=null; try{key=JSON.parse(localStorage.getItem(GHK)||"{}").last;}catch(e){}
+  if(!key){setMsg("cloudMsg","No cloud run started from this browser yet.",false);return;}
+  try{await loadCloud(key);}catch(e){setMsg("cloudMsg",e.status===404?"Results aren't ready yet, or the run failed before saving them. Check the run on GitHub.":ghWhy(e),false);}
+});
+["ghRepo","ghBranch","ghToken"].forEach(id=>$(id).addEventListener("change",()=>ghSave({})));
+</script>
+</body>
+</html>
