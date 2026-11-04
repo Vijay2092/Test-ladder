@@ -3,7 +3,7 @@
 //   node run-browsers.mjs one <target>                  run one browser, e.g. win-chrome
 //   node run-browsers.mjs url <tag> [model]           print the autorun URL (for simulators)
 //   node run-browsers.mjs wait <tag>                  wait for a device opened elsewhere
-import { chromium, firefox } from 'playwright';
+// Playwright is loaded only when a browser is driven, so 'url' and 'wait' need no installs.
 
 const BASE = process.env.QA_BASE || 'http://localhost:8000/';
 const cfg = JSON.parse(process.env.QA_CONFIG || '{}');
@@ -37,6 +37,7 @@ const TARGETS = {
 async function runPlaywright(tag, channelOrModel, engine) {
   const opts = { headless: true, args: engine === 'chromium' ? ['--autoplay-policy=no-user-gesture-required'] : [] };
   if (engine === 'chromium') opts.channel = channelOrModel;
+  const { chromium, firefox } = await import('playwright');
   const browser = await (engine === 'firefox' ? firefox : chromium).launch(opts);
   const page = await (await browser.newContext({ viewport: { width: 1280, height: 900 } })).newPage();
   page.on('pageerror', e => console.log(`  [${tag}] page error: ${e.message}`));
