@@ -59,8 +59,12 @@ if (mode === 'one') {
   const t = Object.values(TARGETS).flat().find(x => x[0] === a);
   if (!t) { console.log('unknown target ' + a); process.exit(1); }
   console.log(`\n▶ ${a}`);
-  try { t[2] === 'safari' ? await runSafari(a) : await runPlaywright(a, t[1], t[2]); }
-  catch (e) { console.log(`  ✗ ${a} could not start: ${e.message}`); await markTimeout(a, `The browser could not start on the test machine: ${e.message}`); }
+  let lastErr = null;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try { t[2] === 'safari' ? await runSafari(a) : await runPlaywright(a, t[1], t[2]); lastErr = null; break; }
+    catch (e) { lastErr = e; console.log(`  ✗ ${a} attempt ${attempt} failed: ${e.message}`); await new Promise(r => setTimeout(r, 5000)); }
+  }
+  if (lastErr) await markTimeout(a, `The browser could not start on the test machine after 2 attempts: ${lastErr.message}`);
   process.exit(0);
 }
 if (mode === 'url') { console.log(urlFor(a, b || '')); process.exit(0); }

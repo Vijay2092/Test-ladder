@@ -9,6 +9,15 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<script>
+/* If a CDN is unreachable (common on test emulators), load the same libraries through the local QA server. */
+if(location.protocol.startsWith("http")){
+  if(!window.Hls)document.write('<script src="/lib/hls.min.js"><\/script>');
+  if(!window.jspdf)document.write('<script src="/lib/jspdf.umd.min.js"><\/script>');
+  document.write('<script>if(window.jspdf&&!window.jspdf.jsPDF.API.autoTable)document.write(\'<script src="/lib/jspdf.plugin.autotable.min.js"><\\/script>\')<\/script>');
+  if(!window.QRCode)document.write('<script src="/lib/qrcode.min.js"><\/script>');
+}
+</script>
 <style>
 /* Layout: settings panel left, report right; issues to fix lead the report; stacks on phones */
 :root{
@@ -759,7 +768,7 @@ async function fetchManifest(){
   const u=$("url").value.trim(); setMsg("formerr","",null); $("formerr").hidden=true;
   if(!/^https?:\/\/.+/i.test(u)){$("formerr").textContent="Enter the playback URL first.";$("formerr").hidden=false;return false;}
   $("fetchBtn").disabled=true;
-  try{let r; try{r=await fetch(u,{cache:"no-store"});}catch(x){ if(!SERVER)throw x; r=await fetch("/proxy?u="+encodeURIComponent(u),{cache:"no-store"}); }
+  try{let r; try{ if(AUTORUN&&SERVER)throw 0; r=await fetch(u,{cache:"no-store"});}catch(x){ if(!SERVER)throw x; r=await fetch("/proxy?u="+encodeURIComponent(u),{cache:"no-store"}); }
     let t=await r.text(); if(t.includes("/proxy?u=")){t=t.split(/\r?\n/).map(l=>l.startsWith("/proxy?u=")?decodeURIComponent(l.slice(9)):l.replace(/URI="\/proxy\?u=([^"]+)"/g,(m,x)=>`URI="${decodeURIComponent(x)}"`)).join("\n");}
     if(!r.ok||!t.includes("#EXTM3U"))throw new Error(r.ok?"not a playlist":"HTTP "+r.status);
     $("m3u8").value=t; isExample=false;
@@ -953,7 +962,9 @@ restore().then(async()=>{
     await runFull();
   }catch(e){ console.error(e); }
   if(!(MYREC&&MYREC.complete)){const r={label:deviceName(),tag:TAG,category:categoryOf(navigator.userAgent),at:new Date().toISOString(),complete:true,
-    setup:{ok:false,message:$("status").textContent||"The test could not run in this browser."},results:[],env:{browser:navigator.userAgent,hls:window.Hls?Hls.version:null}};PLAYS.push(r);pushResult([],[r]);}
+    setup:{ok:false,message:(()=>{const fe=$("formerr");const st=[1,2,3].map(i=>$("st"+i).querySelector(".st").textContent+" "+$("st"+i+"t").textContent);
+      const why=(!fe.hidden&&fe.textContent)?fe.textContent:($("status").textContent&&$("status").textContent!=="Ready."?$("status").textContent:"");
+      return "The test stopped early in this browser. "+(why?why+" ":"")+"Steps: "+st.join(" | ");})()},results:[],env:{browser:navigator.userAgent,hls:window.Hls?Hls.version:null}};PLAYS.push(r);pushResult([],[r]);}
   document.title="QA_DONE";
 });
 

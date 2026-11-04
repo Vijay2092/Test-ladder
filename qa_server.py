@@ -19,6 +19,13 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 PAGE = os.path.join(HERE, "fastpix-stream-qa.html")
 STATE_FILE = os.path.join(HERE, "qa_state.json")
 LOCK = threading.Lock()
+LIBS = {
+    "hls.min.js": "https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js",
+    "qrcode.min.js": "https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js",
+    "jspdf.umd.min.js": "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js",
+    "jspdf.plugin.autotable.min.js": "https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js",
+}
+LIB_CACHE = {}
 
 
 def load_state():
@@ -115,6 +122,17 @@ class H(BaseHTTPRequestHandler):
             with LOCK:
                 return self.send(200, {**STATE, "server": True,
                                        "lan": [f"http://{ip}:{PORT}/" for ip in lan_ips()]})
+        if u.path.startswith("/lib/"):
+            name = u.path[5:]
+            if name not in LIBS:
+                return self.send(404, "not found", "text/plain")
+            if name not in LIB_CACHE:
+                try:
+                    with urllib.request.urlopen(urllib.request.Request(LIBS[name], headers={"User-Agent": "StreamQA"}), timeout=30) as r:
+                        LIB_CACHE[name] = r.read()
+                except Exception as e:
+                    return self.send(502, f"could not download {name}: {e}", "text/plain")
+            return self.send(200, LIB_CACHE[name], "application/javascript")
         if u.path == "/proxy":
             target = urllib.parse.parse_qs(u.query).get("u", [""])[0]
             if not target.startswith(("http://", "https://")):
