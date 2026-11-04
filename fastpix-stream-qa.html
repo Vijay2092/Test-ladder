@@ -205,8 +205,7 @@ video{width:100%;max-width:520px;background:#000;border-radius:8px;aspect-ratio:
               <textarea id="ladder" rows="6" spellcheck="false"></textarea>
             </label>
             <div class="row">
-              <label>Source resolution<input id="src" placeholder="3840x2160"></label>
-              <label>maxResolution
+                            <label>maxResolution
                 <select id="maxres"><option>2160p</option><option>1440p</option><option selected>1080p</option><option>720p</option><option>540p</option><option>480p</option><option>360p</option><option>270p</option><option>144p</option></select>
               </label>
             </div>
@@ -390,7 +389,7 @@ function run(inp){
 
   const present=[...new Set(V.map(v=>v.family))].sort(), want=plus?["H.264","H.265"]:["H.264"];
   ctx.fams=present; ctx.want=want;
-  let src; if(inp.src){const p=inp.src.toLowerCase().split("x").map(Number); src=Math.min(...p);} else {src=Math.max(...V.map(v=>v.size)); ctx.notes.push(`Source size not given; assumed ${src}p from the largest rendition. Enter it to check added and dropped rungs properly.`);}
+  let src; if(inp.src){const p=inp.src.toLowerCase().split("x").map(Number); src=Math.min(...p);} else {src=Math.max(...V.map(v=>v.size)); }
   const cap=Math.min(src,parseInt(inp.maxres)); ctx.cap=cap;
 
   const famOk=present.join()===want.join();
@@ -631,7 +630,7 @@ async function makePdf(){
     doc.setTextColor(0);
     doc.autoTable({...base,startY:y+34,head:[["Setting","Value"]],columnStyles:{0:{cellWidth:150,fontStyle:"bold"}},body:[
       ["Playback ID",inp.pid||"–"],["Media ID",inp.mid||"–"],["Playback URL",inp.url?inp.url.split("?")[0]:"–"],["mediaQuality",ctx.mq],["codecTier (effective)",ctx.tierEff],
-      ["Source / maxResolution",`${inp.src||"not given"} / ${inp.maxres}`],["DRM",inp.drm?"yes":"no"],["Devices tested / playback runs",`${DEVICES.length} / ${PLAYS.length}`]]});
+      ["maxResolution",inp.maxres],["DRM",inp.drm?"yes":"no"],["Devices tested / playback runs",`${DEVICES.length} / ${PLAYS.length}`]]});
     y=doc.lastAutoTable.finalY+20;
     doc.setFont("helvetica","bold");doc.setFontSize(15);doc.setTextColor(...C[S.verdict]);doc.text(`Overall: ${S.verdict}`,M,y);
     const vw=doc.getTextWidth(`Overall: ${S.verdict}`);doc.setFont("helvetica","normal");doc.setFontSize(10);doc.setTextColor(0);
@@ -690,7 +689,7 @@ function exampleManifest(){
   return o.join("\n");
 }
 let isExample=false;
-const FIELDS=["url","m3u8","pid","mid","mq","tier","ladder","src","maxres"];
+const FIELDS=["url","m3u8","pid","mid","mq","tier","ladder","maxres"];
 function readForm(){const o={};FIELDS.forEach(k=>o[k]=$(k).value);o.drm=$("drm").checked;return o;}
 function writeForm(o){FIELDS.forEach(k=>{if(o[k]!=null)$(k).value=o[k];});$("drm").checked=!!o.drm;syncForm();}
 function loadExample(){
@@ -710,19 +709,22 @@ function submit(){
   if($("mq").value==="custom"&&$("ladder").value.trim()){try{ladder=JSON.parse($("ladder").value);}catch(e){fe.textContent="The custom ladder is not valid JSON. Check for a missing comma or bracket.";fe.hidden=false;return false;}}
   const text=$("m3u8").value;
   if(!text.trim()){fe.textContent="Paste the master playlist text or upload the .m3u8 file. This page can't fetch the URL itself.";fe.hidden=false;return false;}
-  const src=$("src").value.trim(); if(src&&!/^\d+\s*x\s*\d+$/i.test(src)){fe.textContent="Write the source resolution as width x height, for example 3840x2160.";fe.hidden=false;return false;}
+  const src="";
   const inp={text,url:$("url").value.trim(),pid:$("pid").value.trim(),mid:$("mid").value.trim(),mq:$("mq").value,tier:$("mq").value==="standard"?"":$("tier").value,
-    ladder,src:src.replace(/\s/g,""),maxres:$("maxres").value,drm:$("drm").checked,example:isExample};
+    ladder,src:"",maxres:$("maxres").value,drm:$("drm").checked,example:isExample};
+  const media=(inp.pid||inp.url.split("?")[0]||"").trim();
+  if(!isExample&&media&&LASTMEDIA&&media!==LASTMEDIA){DEVICES=[];PLAYS=[];if(SERVER)API("/api/reset",{}).catch(()=>{});}
+  if(!isExample&&media)LASTMEDIA=media;
   CUR={res:run(inp),inp}; renderAll(); return true;
 }
 
 /* ---------- persistence (this browser only) ---------- */
 let SERVER=null, REV=-1, applying=false;
-let MYREC=null;
+let MYREC=null, LASTMEDIA=null;
 const QS=new URLSearchParams(location.search), AUTORUN=QS.get("autorun")==="1", TAG=QS.get("device")||null;
 const API=(path,body)=>fetch(path,{method:body?"POST":"GET",headers:body?{"Content-Type":"application/json"}:{},body:body?JSON.stringify(body):undefined,cache:"no-store"}).then(r=>r.json());
 function save(){
-  try{localStorage.setItem(LS_KEY,JSON.stringify({form:{...readForm(),drm:$("drm").checked},DEVICES,PLAYS,targets:[...REQUIRED]}));}catch(e){}
+  try{localStorage.setItem(LS_KEY,JSON.stringify({form:{...readForm(),drm:$("drm").checked},DEVICES,PLAYS,targets:[...REQUIRED],media:LASTMEDIA}));}catch(e){}
   if(SERVER&&!applying&&!isExample)API("/api/form",{form:{...readForm(),drm:$("drm").checked},targets:[...REQUIRED]}).catch(()=>{});
 }
 function pushResult(devs,plays){ if(SERVER)API("/api/result",{devices:devs,playback:plays}).catch(()=>{}); }
@@ -746,6 +748,7 @@ async function restore(){
   }catch(e){}
   let o=null; try{o=JSON.parse(localStorage.getItem(LS_KEY)||"null");}catch(e){}
   if(o&&o.targets)REQUIRED=new Set(o.targets);
+  if(o&&o.media)LASTMEDIA=o.media;
   if(o&&o.form&&o.form.m3u8){writeForm(o.form);DEVICES=o.DEVICES||[];PLAYS=o.PLAYS||[];isExample=false;submit();}
   else loadExample();
 }
@@ -925,16 +928,17 @@ $("importFile").addEventListener("change",async e=>{
   e.target.value=""; renderAll(); save();
   setMsg("impMsg",`Added ${nd} device test${nd===1?"":"s"} and ${np} playback run${np===1?"":"s"}.`+(bad?` ${bad} file(s) were not Stream QA exports.`:"")+warn,!(bad||warn));
 });
-const resetAll=()=>{DEVICES=[];PLAYS=[];if(SERVER)API("/api/reset",{}).catch(()=>{});renderAll();save();setMsg("impMsg","Device and playback results cleared.",true);};
+const resetAll=()=>{DEVICES=[];PLAYS=[];if(SERVER)API("/api/reset",{}).catch(()=>{});if(CUR)renderAll();save();setMsg("impMsg","Device and playback results cleared.",true);};
 $("resetRes").addEventListener("click",resetAll);$("resetRes2").addEventListener("click",resetAll);
 
 $("f").addEventListener("submit",e=>{e.preventDefault();submit();});
 ["mq","tier","url"].forEach(id=>$(id).addEventListener("input",syncForm));
 ["m3u8","ladder","pid"].forEach(id=>$(id).addEventListener("input",()=>{isExample=false;}));
-["url","m3u8","pid","mid","mq","tier","ladder","src","maxres","drm"].forEach(id=>$(id).addEventListener("change",save));
+["url","m3u8","pid","mid","mq","tier","ladder","maxres","drm"].forEach(id=>$(id).addEventListener("change",save));
 $("m3u8file").addEventListener("change",e=>{const f=e.target.files[0]; if(!f)return; const r=new FileReader(); r.onload=()=>{$("m3u8").value=r.result;isExample=false;}; r.readAsText(f);});
 $("example").addEventListener("click",loadExample);
-$("clear").addEventListener("click",()=>{writeForm({url:"",m3u8:"",pid:"",mid:"",ladder:"",src:"",tier:"",mq:"custom",maxres:"1080p",drm:false});$("m3u8file").value="";isExample=false;CUR=null;
+$("clear").addEventListener("click",()=>{CUR=null;resetAll();ghSave({last:null});LASTMEDIA=null;[1,2,3,4].forEach(i=>setStep(i,"wait"));$("cloudJobs").innerHTML="";setMsg("cloudMsg","",null);
+  writeForm({url:"",m3u8:"",pid:"",mid:"",ladder:"",tier:"",mq:"custom",maxres:"1080p",drm:false});$("m3u8file").value="";isExample=false;CUR=null;
   $("out").innerHTML='<div class="panel empty">Fill in the settings and run the check.</div>';$("devSec").hidden=true;$("playSec").hidden=true;$("tail").innerHTML="";});
 $("devLabel").placeholder=`Device name, e.g. ${guessDevice()}`;
 $("thisDev").textContent=categoryOf(navigator.userAgent);
@@ -942,7 +946,7 @@ restore().then(async()=>{
   if(!AUTORUN)return;
   try{
     const c=JSON.parse(decodeURIComponent(escape(atob(QS.get("cfg").replace(/-/g,"+").replace(/_/g,"/")))));
-    writeForm({url:c.url,m3u8:"",pid:c.pid||"",mid:c.mid||"",mq:c.mq,tier:c.tier||"",ladder:c.ladder||"",src:c.src||"",maxres:c.maxres||"1080p",drm:!!c.drm});
+    writeForm({url:c.url,m3u8:"",pid:c.pid||"",mid:c.mid||"",mq:c.mq,tier:c.tier||"",ladder:c.ladder||"",maxres:c.maxres||"1080p",drm:!!c.drm});
     isExample=false; $("devLabel").value=QS.get("model")||"";
     if(Array.isArray(c.profiles))PROFILES.forEach((p,i)=>{$("p"+i).checked=c.profiles.includes(i);});
     if(c.secs)$("secs").value=c.secs;
@@ -992,9 +996,9 @@ $("cloudRun").addEventListener("click",async()=>{
   if(!/^https?:\/\//.test($("url").value.trim())){setMsg("cloudMsg","Enter the real playback URL first.",false);return;}
   if($("m3u8").value.trim()||isExample===false){ if(!submit())return; }
   const f=readForm(); const key="qa"+Date.now().toString(36);
-  const cfg={url:f.url,pid:f.pid,mid:f.mid,mq:f.mq,tier:f.tier,ladder:f.ladder,src:f.src,maxres:f.maxres,drm:$("drm").checked,
+  const cfg={url:f.url,pid:f.pid,mid:f.mid,mq:f.mq,tier:f.tier,ladder:f.ladder,maxres:f.maxres,drm:$("drm").checked,
     profiles:PROFILES.map((p,i)=>$("p"+i).checked?i:-1).filter(i=>i>=0),secs:Math.max(15,+$("secs").value||30)};
-  ghSave({last:key}); $("cloudRun").disabled=true;
+  ghSave({last:key}); $("cloudRun").disabled=true; resetAll(); $("cloudJobs").innerHTML="";
   try{
     setMsg("cloudMsg","Starting the cloud run…");
     await gh("/actions/workflows/stream-qa.yml/dispatches",{method:"POST",body:JSON.stringify({ref:$("ghBranch").value.trim()||"main",inputs:{run_key:key,config:JSON.stringify(cfg)}})});
