@@ -1,0 +1,129 @@
+name: Stream QA
+run-name: Stream QA ${{ inputs.run_key }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_key:
+        description: Run id (set by the QA page)
+        required: true
+      config:
+        description: Test settings as JSON (set by the QA page)
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  QA_CONFIG: ${{ inputs.config }}
+
+jobs:
+  windows:
+    name: Windows - Chrome, Edge, Firefox
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: npm install --no-save playwright@1.47.2 && npx playwright install firefox
+      - name: Start QA server
+        shell: pwsh
+        run: Start-Process -FilePath python -ArgumentList "qa_server.py" -WindowStyle Hidden; Start-Sleep 3
+      - run: node run-browsers.mjs windows
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: { name: results-windows, path: qa_state.json, if-no-files-found: ignore }
+
+  macos:
+    name: Mac - Safari, Chrome, Firefox, iPhone simulator
+    runs-on: macos-14
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: npm install --no-save playwright@1.47.2 selenium-webdriver@4.25.0 && npx playwright install firefox
+      - run: sudo safaridriver --enable
+      - name: Start QA server
+        run: nohup python3 qa_server.py > server.log 2>&1 & sleep 3
+      - run: node run-browsers.mjs macos
+      - name: iPhone simulator - Safari
+        continue-on-error: true
+        run: |
+          UDID=$(xcrun simctl list devices available -j | python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; print(next(x['udid'] for k,v in d.items() if 'iOS' in k for x in v if x['name'].startswith('iPhone')))")
+          xcrun simctl boot "$UDID" || true
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl openurl "$UDID" "$(node run-browsers.mjs url ios-safari Simulator)"
+          node run-browsers.mjs wait ios-safari
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: { name: results-macos, path: qa_state.json, if-no-files-found: ignore }
+
+  linux:
+    name: Linux - Chrome, Firefox
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: npm install --no-save playwright@1.47.2 && npx playwright install --with-deps firefox
+      - name: Start QA server
+        run: nohup python3 qa_server.py > server.log 2>&1 & sleep 3
+      - run: node run-browsers.mjs linux
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: { name: results-linux, path: qa_state.json, if-no-files-found: ignore }
+
+  android:
+    name: Android emulator - Chrome
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Start QA server
+        run: nohup python3 qa_server.py > server.log 2>&1 & sleep 3
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          script: bash android.sh
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: { name: results-android, path: qa_state.json, if-no-files-found: ignore }
+
+  report:
+    name: Combine results
+    needs: [windows, macos, linux, android]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { path: collected }
+      - run: python3 merge.py "${{ inputs.run_key }}"
+      - name: Save results to the qa-results branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          R: ${{ github.repository }}
+          KEY: ${{ inputs.run_key }}
+        run: |
+          if ! gh api "repos/$R/git/ref/heads/qa-results" >/dev/null 2>&1; then
+            SHA=$(gh api "repos/$R/git/ref/heads/${{ github.ref_name }}" --jq .object.sha)
+            gh api -X POST "repos/$R/git/refs" -f ref=refs/heads/qa-results -f sha="$SHA"
+          fi
+          base64 -w0 "results/$KEY.json" > b64.txt
+          gh api -X PUT "repos/$R/contents/results/$KEY.json" -f message="Stream QA results $KEY" -f branch=qa-results -F content=@b64.txt
